@@ -33,13 +33,14 @@ function VendorCard({vendor,api,onNote,onRemove,products,onAddProduct,onRemovePr
   {vendor.about&&<small>{vendor.about}</small>}
   {edit?<form className="vendor-edit" onSubmit={e=>{e.preventDefault();setEdit(false)}}>
     {fields.map(([k,label,hint])=><label key={k}>{label}<input value={vendor[k]||''} placeholder={hint} maxLength="120" onChange={e=>onNote({[k]:e.target.value})}/></label>)}
+    <label>Quote email<input type="email" value={vendor.email||''} placeholder="sales@supplier.com" maxLength="120" onChange={e=>onNote({email:e.target.value.trim()})}/><small className="muted">The BOM tool's Ask quote mails go here.</small></label>
     <label>Contact<input value={vendor.contact||''} placeholder="Name, email or phone" maxLength="120" onChange={e=>onNote({contact:e.target.value})}/></label>
     <label>Notes<textarea rows="2" value={vendor.notes||''} maxLength="300" onChange={e=>onNote({notes:e.target.value})}/></label>
     <button className="button small primary" type="submit"><Check size={14}/>Done</button>
    </form>
   :<dl className="vendor-caps">{fields.length>0&&filled.length===0&&<div><dt>Capabilities</dt><dd className="muted">Not confirmed yet</dd></div>}
     {filled.map(([k,label])=><div key={k}><dt>{label}</dt><dd>{vendor[k]}</dd></div>)}
-    {vendor.contact&&<div><dt>Contact</dt><dd>{vendor.contact}</dd></div>}{vendor.notes&&<div><dt>Notes</dt><dd>{vendor.notes}</dd></div>}</dl>}
+    {vendor.email&&<div><dt>Quote email</dt><dd>{vendor.email}</dd></div>}{vendor.contact&&<div><dt>Contact</dt><dd>{vendor.contact}</dd></div>}{vendor.notes&&<div><dt>Notes</dt><dd>{vendor.notes}</dd></div>}</dl>}
   <VendorProducts vendor={vendor} products={products} onAdd={onAddProduct} onRemove={onRemoveProduct}/>
   <div className="vendor-card-foot">
    {vendor.url&&<a className="text-button" href={vendor.url} target="_blank" rel="noreferrer">Website <ArrowUpRight size={13}/></a>}

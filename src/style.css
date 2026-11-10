@@ -875,3 +875,5 @@ dl.quote-preview{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:
 .stage-groups .stage-track li span{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 .stage-groups .stage-track{gap:2px}.stage-groups .stage-track li i{height:7px}
 .stage-now{margin:2px 0 0;font-size:12.5px;color:var(--t2)}.stage-now strong{color:var(--text)}
+.refetch-note{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.refetch-note>span{flex:1 1 320px}
+.act-pair{display:inline-flex;flex-direction:column;align-items:flex-start;gap:2px}.act-link.ask{font-size:11.5px;color:var(--accent-text)}

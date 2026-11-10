@@ -91,3 +91,19 @@ test('vendor register: products a vendor lists become offers on matching BOM lin
  d=removeProduct(d,productsOf(d,id)[0].id);assert.equal(productsOf(d,id).length,0);
  d=addProduct(d,id,{mpn:'LM358P'});assert.equal(removeVendor(d,id).products.length,0,'removing a vendor removes its products');
 });
+
+test('one-click quotation request: the supplier email from the Vendors page and a written-out mail',async()=>{
+ mem.clear();const {emailOf,vendorEmail,rfqMail}=await import('../src/rfq.js');
+ assert.equal(emailOf('Ravi, ravi.k@chennai-comp.in, +91 98400'),'ravi.k@chennai-comp.in');assert.equal(emailOf('no mail'),'');
+ let d=loadVendorData();d=setVendorNote(d,'distributor:digikey',{email:'quotes@example.com'});saveVendorData(d);
+ assert.equal(vendorEmail('DigiKey'),'quotes@example.com');assert.equal(vendorEmail('Digi-Key'),'quotes@example.com','spelling of the seller name does not matter');
+ d=addVendor(d,{kind:'distributor',name:'Chennai Components'});d=setVendorNote(d,d.custom[0].id,{contact:'Ravi, ravi.k@chennai-comp.in'});saveVendorData(d);
+ assert.equal(vendorEmail('Chennai Components'),'ravi.k@chennai-comp.in','an address in the contact field is used');assert.equal(vendorEmail('Mouser'),'');
+ const m=rfqMail({seller:'DigiKey',to:'quotes@example.com',lines:[{mpn:'1N4148W',manufacturer:'Diodes Inc',qty:1500,refs:['D1','D2']},{mpn:'SS14',qty:200}],project:'Gateway GW-1',due:'2026-12-15',boards:250,from:{company:'Semi Cobot Pvt Ltd',contact:'Asha',address:'Chennai'},date:new Date('2026-11-10T00:00:00Z')});
+ assert.equal(m.subject,'Request for quotation – Gateway GW-1 – 2 parts');
+ assert.match(m.body,/^Dear DigiKey team,\n\nPlease quote the parts below, for delivery by 2026-12-15\./);assert.match(m.body,/Project: Gateway GW-1 \(250 boards\)/);
+ assert.match(m.body,/1\. 1N4148W \(Diodes Inc\) – quantity 1,500 – ref D1 D2\n2\. SS14 – quantity 200/);assert.match(m.body,/Asha\nSemi Cobot Pvt Ltd\nChennai\nSent 2026-11-10$/);
+ assert.ok(m.href.startsWith('mailto:quotes%40example.com?subject=Request%20for%20quotation'));
+ const many=rfqMail({seller:'Mouser',lines:Array.from({length:120},(_,i)=>({mpn:'PART-NUMBER-'+i,qty:1000}))});
+ assert.ok(many.href.length<=1800,'kept short enough for mail programs');assert.match(many.body,/… and \d+ more parts \(list to follow\)\./);assert.ok(many.href.startsWith('mailto:?subject='),'no address known: the mail opens without one');
+});

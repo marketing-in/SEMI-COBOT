@@ -1,6 +1,6 @@
 import React,{useEffect,useId,useMemo,useRef,useState} from 'react';
 import {PlayCircle,Bookmark,Factory,CheckCircle2,Calculator,RefreshCw,Trash2,Plus,Upload,FileDown,ArrowRight,ArrowUpRight,TriangleAlert,X,Truck,CircuitBoard,ClipboardList,Replace,Search,ChevronDown,ChevronRight,Columns3,Gavel,ArrowUpDown,ArrowUp,ArrowDown,Info} from 'lucide-react';
-import {cartUnit,MAX_MARGIN,marketLabel,availability,rowCost,sourcingAlerts,pcbEstimate,pcbFieldsFor,pcbSpecText,typicalBoard,purchasePlan,rowsFromParts,rowsFromTable,offerKey,unitAt,marketStock,recommend,allOffers,orderQty,offerLeadDays,supplierShipping,quoteTotals,riskOf,bomSummary,cartAdd,PRICING,PCB_MATERIALS} from './bom.js';
+import {isAuthorized,cartUnit,MAX_MARGIN,marketLabel,availability,rowCost,sourcingAlerts,pcbEstimate,pcbFieldsFor,pcbSpecText,typicalBoard,purchasePlan,rowsFromParts,rowsFromTable,offerKey,unitAt,marketStock,recommend,allOffers,orderQty,offerLeadDays,supplierShipping,quoteTotals,riskOf,bomSummary,cartAdd,PRICING,PCB_MATERIALS} from './bom.js';
 import {scoreRow,SCORES} from './bomScores.js';
 import {useMoney} from './currency.jsx';
 import {PartImage} from './PartImage.jsx';
@@ -18,6 +18,8 @@ import {enclosureSize,observeOffers,partKey,partOutlook,quotationOutlook} from '
 import MouldStep from './MouldStep.jsx';
 import {saveList,loadLists} from './savedLists.js';
 import {loadVendorData,vendorOffersFor} from './vendors.js';
+import {learnParts,loadDetails,saveDetails} from './partDetails.js';
+import {rfqMail,vendorEmail} from './rfq.js';
 
 // BOM tool: analyse and price a bill of materials for a build. Rows come from a board, the inventory
 // or an uploaded BOM file; /api/compare asks the connected distributors (keys stay on the server) for
@@ -30,13 +32,13 @@ import {loadVendorData,vendorOffersFor} from './vendors.js';
 const STORE='semicobot-bom-tool-v1',FROM='semicobot-quote-from-v1',BACKUP='semicobot-bom-backup-v1';
 // The order of the work: the bare board first (its outline sizes the enclosure), then the components,
 // the enclosure, the mould for a custom enclosure, and the quotation with Save list and Continue.
-const STEPS=['Bare PCB','Components','Enclosure','Quotation'];
+const STEPS=['Components','Bare PCB','Enclosure','Quotation'];
 // Only the components are needed; the bare board and the enclosure (with its mould) are options.
 const OPTIONAL=new Set(['Bare PCB','Enclosure']);
 // One plain sentence per step: what to do here and where it goes next.
 const GUIDE=[
- 'Optional. Upload the Gerber ZIP: the board size and layers fill the PCB quote, the board opens in Board studio, its components fill the Components step and its size sizes the enclosure. No Gerber? Skip to Components.',
- 'Required. Upload your Excel or CSV BOM (MPN and quantity), or use a board. Each line is priced from your own stock first, then authorised distributors, registered vendors and the open market.',
+ 'Required. Upload your BOM: an Excel or CSV sheet (MPN and quantity), or the Gerber ZIP with its BOM, .pos, .kicad_pcb or ibom.html, which also sets the bare PCB. Each line is priced from your own stock first, then authorised distributors, registered vendors and the open market.',
+ 'Optional. The board size and layers come from the Gerber (uploaded here or in Components) and fill the PCB quote; the board opens in Board studio and its size sizes the enclosure. No bare PCB? Skip to Enclosure.',
  'Optional. Choose off the shelf or custom moulded. A custom enclosure gets its mould here: the estimate, the mould makers and the maker\'s quote.',
  'Check the totals, download the quotation PDF, then Save list to come back later or Continue to send it to production.'];
 const DEFAULT={project:'',customer:'',due:'',listId:null,from:'',boards:100,margin:15,method:'markup',rows:[],pcb:{material:'',choice:'',widthMm:100,heightMm:67,layers:2,spec:{},gerber:null,unit:null,margin:0,vendor:''},
@@ -98,7 +100,7 @@ export function TipLayer(){
  return <div ref={box} className="tip-layer" aria-hidden="true" style={{width:W,left,...(below?{top:tip.r.bottom+6}:{bottom:innerHeight-tip.r.top+6})}} onMouseEnter={()=>clearTimeout(timer.current)} onMouseLeave={()=>setTip(null)}>{tip.text}</div>;
 }
 
-export default function BomTool({parts=[],boards=[],activeBoardId,boardModel=[],boardTypes=[],knowledge=null,api=null,notify=()=>{},onCompare=()=>{},onContinue=null,onOpenSavedLists=()=>{},onVendors=()=>{},onGerberFiles=null}){
+export default function BomTool({parts=[],boards=[],activeBoardId,boardModel=[],boardTypes=[],knowledge=null,api=null,notify=()=>{},onCompare=()=>{},onContinue=null,onOpenSavedLists=()=>{},onVendors=()=>{},onGerberFiles=null,onBoardFiles=null}){
  const money=useMoney();
  const [s,setS]=useState(load),[step,setStep]=useState(0);
  const workflow=useRef(null);
@@ -177,10 +179,30 @@ export default function BomTool({parts=[],boards=[],activeBoardId,boardModel=[],
   if(b.gerberSource)import('./gerberQuote.js').then(m=>m.gerberFromBoard(b)).then(({facts})=>readGerber(facts)).catch(()=>{});
   else if(b.width>0&&b.height>0)import('./bareBoard.js').then(m=>readGerber(m.boardFacts(b,list))).catch(()=>{})};
  const loadInventory=()=>{const rows=parts.map((p,i)=>({id:'i'+i+'-'+p.id,mpn:p.mpn,manufacturer:real(p.manufacturer),description:real(p.description),package:real(p.package),type:'',refs:[],qty:1,margin:null,source:'auto',offers:[],fetchedAt:null,lifecycle:real(p.lifecycle)||null}));set({rows,from:'Inventory',pricedAt:null});setDetail(null);notify(`${rows.length} lines from inventory.`)};
+ // The BOM upload takes a BOM sheet, an Interactive HTML BOM, or a board: a Gerber ZIP or layer files
+ // (with the BOM, .pos, .kicad_pcb or ibom.html inside), a .kicad_pcb or a placement file. A board
+ // becomes the BOM lines, joins Board studio and sets the bare PCB.
+ const BOARD_FILE=/\.(zip|gbr|ger|gtl|gbl|gts|gbs|gto|gbo|gtp|gbp|gko|gm\d+|gml|drl|xln|kicad_pcb|pos)$/i;
+ async function importFiles(list){if(!list.length)return;
+  try{
+   if(list.some(f=>BOARD_FILE.test(f.name))){if(!onBoardFiles)throw Error('Board files cannot be read here.');setBusy('Reading the board files…');
+    const b=await onBoardFiles(list);if(!b)return;if(!b.parts?.length)throw Error(`${b.name} was added to Board studio, but its files name no components. Add the BOM, .pos, .kicad_pcb or ibom.html.`);
+    loadBoard(b);const named=b.parts.filter(p=>p.mpn).length,valued=b.parts.filter(p=>!p.mpn&&p.value).length,bare=b.parts.length-named-valued;
+    notify(`${b.parts.length} components from ${b.name}: ${named} with part numbers, ${valued} with values only${bare?`, ${bare} with designators only (no value in the files)`:''}. The bare PCB and Board studio use the same board.`);return}
+   const html=list.find(f=>/\.html?$/i.test(f.name));
+   if(html){const {parseIbom,cleanFootprint}=await import('./ibom.js');const map=parseIbom(await html.text());if(!map.size)throw Error('This page is not an Interactive HTML BOM (ibom.html).');
+    const rows=rowsFromParts([...map].map(([ref,v])=>({ref,mpn:v.mpn||'',value:v.value,package:cleanFootprint(v.package),manufacturer:v.manufacturer})));
+    set({rows,from:html.name,project:s.project||html.name.replace(/\.[^.]+$/,''),pricedAt:null});setDetail(null);notify(`${rows.length} lines from ${html.name} (${map.size} components).`);return}
+   await importFile(list[0]);
+  }catch(e){notify(e.message)}finally{setBusy('');if(fileRef.current)fileRef.current.value=''}}
  async function importFile(file){if(!file)return;try{if(file.size>5e6)throw Error('Choose a file smaller than 5 MB.');let table;
   if(/\.xlsx$/i.test(file.name)){const {default:ExcelJS}=await import('exceljs');const wb=new ExcelJS.Workbook();await wb.xlsx.load(await file.arrayBuffer());const ws=wb.worksheets[0];table=[];ws.eachRow({includeEmpty:false},row=>{const vals=[];row.eachCell({includeEmpty:true},(c,i)=>{const v=c.value;vals[i-1]=v&&typeof v==='object'?(v.text??v.result??v.richText?.map(t=>t.text).join('')??''):v});table.push(vals)})}
   else table=parseCsv(await file.text());
-  const rows=rowsFromTable(table);if(!rows.length)throw Error('No part number column found. Name a column "MPN" or "Part number".');set({rows,from:file.name,project:s.project||file.name.replace(/\.[^.]+$/,''),pricedAt:null});setDetail(null);notify(`${rows.length} lines imported from ${file.name}.`)}
+  const rows=rowsFromTable(table);if(!rows.length)throw Error('No part number column found. Name a column "MPN" or "Part number".');set({rows,from:file.name,project:s.project||file.name.replace(/\.[^.]+$/,''),pricedAt:null});setDetail(null);
+  // New part numbers in the BOM join the part master by themselves.
+  let added=[];try{const known=mpn=>{if(!knowledge)return false;const r=lookupPart(knowledge,{mpn});return !!r&&(r.match==='exact'||r.match==='variant')};
+   const res=learnParts(loadDetails(localStorage),rows.map(r=>({mpn:r.mpn,manufacturer:r.manufacturer,description:r.description,package:r.package,from:file.name})),{source:'bom',known});if(res.added.length&&saveDetails(localStorage,res.next))added=res.added}catch{}
+  notify(`${rows.length} lines imported from ${file.name}${added.length?`; ${added.length} new part number${added.length===1?'':'s'} added to the part master`:''}.`)}
   catch(e){notify(e.message)}finally{if(fileRef.current)fileRef.current.value=''}}
  const addRow=e=>{e.preventDefault();const mpn=addMpn.trim();if(!mpn)return;const p=inv.get(mpn.toUpperCase());const k0=knowledge?lookupPart(knowledge,{mpn}):null,k=k0?.match==='exact'?k0:null;
   set(x=>({rows:[...x.rows,{id:'m'+Date.now().toString(36),mpn:p?.mpn||mpn,manufacturer:real(p?.manufacturer)||k?.entry?.manufacturer||'',description:real(p?.description)||k?.entry?.description||'',package:real(p?.package)||k?.entry?.package||'',type:'',refs:[],qty:Math.max(1,n0(addQty)),margin:null,source:'auto',offers:[],fetchedAt:null,lifecycle:p?.lifecycle||null}]}));setAddMpn('');setAddQty('1')};
@@ -216,7 +238,7 @@ export default function BomTool({parts=[],boards=[],activeBoardId,boardModel=[],
    if(c.buy>0&&c.offer&&c.unit!=null){const it=cartItem(r,c.offer,c.buy),k=it.mpn.toUpperCase()+'|'+it.seller,prev=batch.get(k);batch.set(k,prev?{...it,qty:prev.qty+it.qty,ref:[prev.ref,it.ref].filter(Boolean).join(' ').slice(0,60)}:it);n++}
    else if(c.source==='own')own++;else if(c.need)none++});
   let cart=s.cart;for(const it of batch.values())cart=cartAdd(cart,{...it,unit:cartUnit(it,it.qty)});set({cart});notify(`${n} line${n===1?'':'s'} added to the purchase list${own?`, ${own} covered by own stock`:''}${none?`, ${none} without a price`:''}.`)};
- const cartProps={cart:s.cart,bids:s.bids,money,shipping:inbound,onClose:()=>setCartOpen(null),onQty:(id,qty)=>set(x=>({cart:x.cart.map(i=>i.id===id?{...i,qty,unit:cartUnit(i,qty)}:i)})),onRemove:id=>set(x=>({cart:x.cart.filter(i=>i.id!==id)})),onClear:()=>set({cart:[]}),
+ const cartProps={askQuote:(seller,lines)=>askQuote(seller,lines),cart:s.cart,bids:s.bids,money,shipping:inbound,onClose:()=>setCartOpen(null),onQty:(id,qty)=>set(x=>({cart:x.cart.map(i=>i.id===id?{...i,qty,unit:cartUnit(i,qty)}:i)})),onRemove:id=>set(x=>({cart:x.cart.filter(i=>i.id!==id)})),onClear:()=>set({cart:[]}),
   onBidStatus:(id,status)=>set(x=>({bids:x.bids.map(b=>b.id===id?{...b,status}:b)})),onBidRemove:id=>set(x=>({bids:x.bids.filter(b=>b.id!==id)}))};
  const saveBid=b=>{set(x=>({bids:[b,...x.bids]}));setBid(null);notify(`Bid for ${b.mpn} saved.`)};
 
@@ -254,7 +276,15 @@ export default function BomTool({parts=[],boards=[],activeBoardId,boardModel=[],
  const count=v=>v==null?null:v>=1e6?(v/1e6).toFixed(v>=1e7?0:1).replace(/\.0$/,'')+'M':Math.round(v).toLocaleString('en-US');
  const marketShort=t=>({'ems-excess':'EMS excess','oem-excess':'OEM/ODM excess',broker:'broker'})[t]||'excess';
  // Action for a line, by offer: buy from a distributor, bid on excess stock, or get a price first.
- const action=(r,c)=>{const o=c.offer;
+ // One-click request for quotation to an authorised distributor (or a registered vendor): the mail opens
+ // written out in the user's mail program, to the supplier's quote email from the Vendors page.
+ const rfqFrom=()=>({...loadFrom(),project:s.project||s.from||'',due:s.due||'',boards:s.boards});
+ const askQuote=(seller,lines)=>{const f=rfqFrom(),to=vendorEmail(seller);return {...rfqMail({seller,to,lines,project:f.project,due:f.due,boards:f.boards,from:f}),to}};
+ const askable=o=>!!o&&(isAuthorized(o)||o.marketType==='registered');
+ const quoteLink=(r,c,o)=>{const m=askQuote(o.seller,[{mpn:o.mpn||r.mpn,manufacturer:o.manufacturer||r.manufacturer,qty:c.buy||c.need,refs:r.refs}]);
+  return <a className="act-link ask" href={m.href} title={m.to?`Opens a quotation request to ${m.to} in your mail program`:`Opens a quotation request in your mail program. Add ${o.seller}'s quote email on the Vendors page to fill in the To field.`} aria-label={`Ask ${o.seller} to quote ${r.mpn}`} onClick={()=>notify(m.to?`Quotation request for ${r.mpn} to ${o.seller} opened in your mail program.`:`Quotation request for ${r.mpn} opened. Add ${o.seller}'s quote email on the Vendors page so it is filled in next time.`)}>Ask quote</a>};
+ const action=(r,c)=>{const main=actionMain(r,c),o=c.offer;return c.need&&c.source!=='own'&&askable(o)?<span className="act-pair">{main}{quoteLink(r,c,o)}</span>:main};
+ const actionMain=(r,c)=>{const o=c.offer;
   if(!c.need)return <span className="act-muted">—</span>;
   if(c.source==='own')return <span className="act-muted">Own stock</span>;
   if(o&&o.marketType&&!['authorized','marketplace'].includes(o.marketType))return <button className="act-link bid" onClick={()=>setBid({offer:{...o,mpn:o.mpn||r.mpn},need:c.buy||c.need})}>Bid ({marketShort(o.marketType)})</button>;
@@ -272,8 +302,8 @@ export default function BomTool({parts=[],boards=[],activeBoardId,boardModel=[],
   <span tabIndex={0} className={summary.atRisk?'risk':''} data-tip="A part is at risk when it is end of life, has limited stock coverage, has no price, or scores under 40 for resilience.">{summary.atRisk} part{summary.atRisk===1?'':'s'} at risk</span></p>;
  const header=<div className="bom-sheet-head" role="group" aria-label="BOM analysis" data-tour="bom-summary">
   <div className="bom-name"><input className="bom-project" aria-label="Project name" value={s.project} placeholder="Name this BoM" onChange={e=>set({project:e.target.value.slice(0,80)})}/>{factsLine}</div>
-  <div className="bom-cta" data-tour="bom-cta"><button className="button soft" onClick={()=>fileRef.current?.click()}>Upload BoM</button><button className="button primary" onClick={addAll} disabled={empty}>Add all to list</button></div>
-  <input ref={fileRef} type="file" accept=".xlsx,.csv,.txt,.tsv" hidden aria-label="BOM file" onChange={e=>importFile(e.target.files[0])}/>
+  <div className="bom-cta" data-tour="bom-cta"><button className="button soft" onClick={()=>fileRef.current?.click()}>Upload BoM or Gerber</button><button className="button primary" onClick={addAll} disabled={empty}>Add all to list</button></div>
+  <input ref={fileRef} type="file" multiple accept=".xlsx,.csv,.txt,.tsv,.zip,.gbr,.ger,.gtl,.gbl,.gts,.gbs,.gto,.gbo,.gtp,.gbp,.gko,.gml,.gm1,.drl,.xln,.pos,.kicad_pcb,.html,.htm" hidden aria-label="BOM file" onChange={e=>importFiles([...e.target.files])}/>
  </div>;
  const tools=<div className="bom-tools">
   <div className="search-box"><Search size={15}/><input aria-label="Search the BOM" value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search part, brand, supplier"/></div>
@@ -293,7 +323,7 @@ export default function BomTool({parts=[],boards=[],activeBoardId,boardModel=[],
 
  // --- Demo tour: a priced demo BOM replaces the user's for the length of the tour, then theirs comes back.
  const [demo,setDemo]=useState(false);
- const startDemo=()=>{try{if(!s.demo)localStorage.setItem(BACKUP,JSON.stringify(s))}catch{}setDetail(null);setCartOpen(null);setQuote(false);setS({...DEFAULT,...demoBomState()});setStep(1);setDemo(true)};
+ const startDemo=()=>{try{if(!s.demo)localStorage.setItem(BACKUP,JSON.stringify(s))}catch{}setDetail(null);setCartOpen(null);setQuote(false);setS({...DEFAULT,...demoBomState()});setStep(0);setDemo(true)};
  const endDemo=()=>{setDemo(false);setDetail(null);setCartOpen(null);let own=null;try{own=localStorage.getItem(BACKUP);localStorage.removeItem(BACKUP);if(own)localStorage.setItem(STORE,own);else localStorage.removeItem(STORE)}catch{}
   setS(own?load():DEFAULT);setStep(0);notify('Demo finished. Your own BOM is back.')};
  useEffect(()=>{const ask=()=>{try{if(sessionStorage.getItem(BOM_DEMO)!=='1')return;sessionStorage.removeItem(BOM_DEMO)}catch{return}startDemo()};ask();addEventListener(BOM_DEMO,ask);return()=>removeEventListener(BOM_DEMO,ask)},[]);// eslint-disable-line react-hooks/exhaustive-deps
@@ -313,7 +343,8 @@ export default function BomTool({parts=[],boards=[],activeBoardId,boardModel=[],
  // (drawn from the files, components from X2 attributes, a placement file or inferred from the pads),
  // and when the BOM is still empty its components become the BOM lines.
  const sendGerber=async files=>{if(!onGerberFiles)return;try{const b=await onGerberFiles(files);if(!b)return;
-  if(!s.rows.length&&b.parts?.length){loadBoard({...b,parts:b.parts});notify(`${b.name}: board added to Board studio and ${b.parts.length} components sent to the Components step.`)}
+  const named=(b.parts||[]).filter(p=>p.mpn).length;
+  if(!s.rows.length&&b.parts?.length){loadBoard({...b,parts:b.parts});notify(`${b.name}: board added to Board studio and ${b.parts.length} components sent to the Components step${named?`, ${named} with part numbers from the Gerber set`:''}.`)}
   else notify(b.parts?.length?`${b.name} added to Board studio. Your BOM lines are kept; use Load from… in Components to replace them with the board's ${b.parts.length} components.`:`${b.name} added to Board studio. No components were found in the files, so upload the BOM in Components.`)}
   catch(e){notify(e.message||'The board could not be added to Board studio.')}};
  // --- Quotation outcome: save the list to come back to, or continue to production.
@@ -348,12 +379,12 @@ export default function BomTool({parts=[],boards=[],activeBoardId,boardModel=[],
   </nav>
   <p className="step-guide" role="note"><strong>Step {step+1} of {STEPS.length} · {STEPS[step]}.</strong> {GUIDE[step]}</p>
   {s.demo&&<div className="studio-note bom-demo-note" role="note"><PlayCircle size={15}/> Demo data: an illustrative BOM with demo prices. Your own BOM comes back when the demo ends.</div>}
-  {step===1&&<><section className="panel bom-sheet" aria-label="Components">
+  {step===0&&<><section className="panel bom-sheet" aria-label="Components">
    {header}{tools}
    {ready===false&&<div className="studio-note"><TriangleAlert size={15}/> No distributor is connected, so prices cannot be fetched. Add DigiKey or Mouser keys as server secrets (Integrations).</div>}
    {busy&&<div className="bom-loading" aria-hidden="true">{busy}</div>}
-   {empty?<div className="empty bom-empty"><Calculator/><h3>Start a BoM</h3><p>Upload a BoM file, load a board, or add parts one by one.</p>
-     <div className="bom-empty-actions"><button className="button primary" onClick={()=>fileRef.current?.click()}><Upload size={15}/>Upload BoM</button>{active&&<button className="button" onClick={()=>loadBoard(active)}><CircuitBoard size={15}/>Use {active.name}</button>}</div>
+   {empty?<div className="empty bom-empty"><Calculator/><h3>Start a BoM</h3><p>Upload a BoM sheet (Excel or CSV) or the Gerber ZIP, load a board, or add parts one by one.</p>
+     <div className="bom-empty-actions"><button className="button primary" onClick={()=>fileRef.current?.click()}><Upload size={15}/>Upload BoM or Gerber</button>{active&&<button className="button" onClick={()=>loadBoard(active)}><CircuitBoard size={15}/>Use {active.name}</button>}</div>
      <form className="bom-add-row" onSubmit={addRow}><input aria-label="Part number to add" value={addMpn} onChange={e=>setAddMpn(e.target.value)} placeholder="Add a part number"/><input aria-label="Quantity per board" type="number" min="1" value={addQty} onChange={e=>setAddQty(e.target.value)}/><button className="button small" type="submit" disabled={!addMpn.trim()}><Plus size={14}/>Add line</button></form></div>
    :<div className="table-scroll bom-grid-wrap" data-tour="bom-grid"><table className="bom-grid">
     <thead><tr>{shown.map(c=>{const sorted=s.sort.key===c.key;return <th key={c.key} className={c.numeric?'numeric':''} aria-sort={sorted?(s.sort.dir>0?'ascending':'descending'):'none'}>
@@ -408,7 +439,7 @@ export default function BomTool({parts=[],boards=[],activeBoardId,boardModel=[],
   {!empty&&<ComponentPlanning rows={rows} calcs={calcs} outlooks={outlooks} hikes={s.hikes} onHikes={(key,value)=>set(x=>({hikes:{...x.hikes,[key]:Math.max(0,Math.min(100,n0(value)))}}))} purchases={s.purchases} onPurchase={recordPurchase} money={money}/>}
   </>}
 
-  {step===0&&<section className="panel bom-extras" aria-label="Bare PCB setup">
+  {step===1&&<section className="panel bom-extras" aria-label="Bare PCB setup">
     <div className="panel-heading"><div className="title-row"><CircuitBoard size={17}/><h2>Bare PCB</h2></div><small className="muted">optional</small></div>
     <div className="bom-pcb">
      <PcbGerber onFiles={sendGerber} info={s.pcb.gerber} spec={est.spec} layers={est.layers} material={mat.label} boardSource={gerberBoard} demoUrl={s.demo?DEMO_GERBER:null} onRead={readGerber} onClear={board=>set(x=>({pcb:{...x.pcb,gerber:null,gerberOff:board||x.pcb.gerberOff||null}}))}/>

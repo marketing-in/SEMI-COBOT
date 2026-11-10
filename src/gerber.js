@@ -9,6 +9,10 @@
 // pol is 'D' (dark, adds material) or 'C' (clear, removes it).
 
 import {makePart,parsePlacementText,LIMITS} from './blueprint.js';
+import {parseBomText,looksLikeBom} from './bomFile.js';
+import {isIbom,parseIbom,cleanFootprint} from './ibom.js';
+import {parseKicadPcb} from './blueprint.js';
+import {nameFromData} from './partName.js';
 import {inferComponents} from './gerberInfer.js';
 
 const MAX_OBJECTS=400000;
@@ -226,9 +230,11 @@ export function identifyLayer(name,text=''){
   if(fn==='Paste')return {kind:'paste',side};if(fn==='Profile')return {kind:'outline',side:'all'};if(fn==='Component')return {kind:'component',side};
   if(/Plated|NonPlated/.test(fn))return {kind:'drill',side:'all',plated:fn==='Plated'};
  }
+ if(!isGerber&&/\.html?$/.test(base)&&isIbom(text))return {kind:'ibom',side:'all'};
+ if(/\.kicad_pcb$/.test(base)||/^\s*\(kicad_pcb\b/.test(String(text).slice(0,200)))return {kind:'kicad',side:'all'};
  if(!isGerber){
-  if(['pos','xy','mnt','mnb'].includes(ext)||/(pick.?(and|n|&)?.?place|centroid|pnp|position|insert|placement|cpl)/.test(base)&&/\.(csv|txt|tsv)$/.test(base))return {kind:'pnp',side:/mnb$|bot/.test(base)?'bottom':'all'};
-  if(/\.(csv|txt|tsv)$/.test(base)&&/(bom|bill)/.test(base))return {kind:'bom',side:'all'};
+  if(['pos','xy','mnt','mnb'].includes(ext)||/(pick.?(and|n|&)?.?place|centroid|pnp|position|insert|placement|cpl)/.test(base)&&/\.(csv|txt|tsv|xlsx)$/.test(base))return {kind:'pnp',side:/mnb$|bot/.test(base)?'bottom':'all'};
+  if(/\.(csv|txt|tsv|xlsx)$/.test(base)&&(/(bom|bill)/.test(base)||looksLikeBom(text)))return {kind:'bom',side:'all'};
   return {kind:'unknown',side:'all'};
  }
  const byExt={gtl:['copper','top'],gbl:['copper','bottom'],cmp:['copper','top'],sol:['copper','bottom'],top:['copper','top'],bot:['copper','bottom'],
@@ -308,12 +314,13 @@ export function componentFromPads(ref,pads,{rot=null,center=null}={}){
 // files: [{name,text}]. Returns {board, layers, warnings, summary} where `layers` holds the
 // drawable primitives (board coordinates) for the surface renderer, and `board` is the usual model.
 export function buildGerberBoard(files,{name}={}){
- const warnings=[],layers={},drills=[],pnpFiles=[],unknown=[];let copperCount=0;
+ const warnings=[],layers={},drills=[],pnpFiles=[],bomFiles=[],unknown=[];let copperCount=0;
  for(const f of files){
   const id=identifyLayer(f.name,f.text);
   if(id.kind==='drill'){const d=parseExcellon(f.text,f.name);if(id.plated===false)d.plated=false;drills.push(d);d.warnings.forEach(w=>warnings.push(f.name+': '+w));continue}
   if(id.kind==='pnp'){pnpFiles.push({...f,side:id.side});continue}
-  if(id.kind==='unknown'||id.kind==='bom'){unknown.push(f.name);continue}
+  if(id.kind==='bom'||id.kind==='ibom'||id.kind==='kicad'){bomFiles.push({...f,ibom:id.kind==='ibom',kicad:id.kind==='kicad'});continue}
+  if(id.kind==='unknown'){unknown.push(f.name);continue}
   const g=parseGerber(f.text,f.name);g.warnings.forEach(w=>warnings.push(f.name+': '+w));
   const key=id.kind+':'+id.side;if(id.kind==='copper')copperCount++;
   if(layers[key]){layers[key].objects.push(...g.objects);layers[key].flashes.push(...g.flashes);layers[key].names.push(f.name)}else layers[key]={...id,objects:g.objects,flashes:g.flashes,names:[f.name],fileAttrs:g.fileAttrs};
@@ -340,11 +347,16 @@ export function buildGerberBoard(files,{name}={}){
  for(const side of ['top','bottom']){const l=layers['copper:'+side];if(!l)continue;
   for(const f of l.flashes){const p=f.attrs.P?.[0]||f.attrs.C?.[0];if(!p)continue;const pin=f.attrs.P?.[1]||'';
    const [x,y]=[f.x-cx,cy-f.y];const entry=padsByRef.get(p)||{sides:new Set(),pads:[]};entry.sides.add(side);
-   if(!entry.pads.some(q=>q.pin&&q.pin===pin&&Math.hypot(q.x-x,q.y-y)<.01||Math.hypot(q.x-x,q.y-y)<.01)){const hole=holeList.find(h=>!h.slot&&Math.hypot(h.x-x,h.y-y)<.05);entry.pads.push({x,y,pin,hole:hole?.d||0,outline:f.shape.flatMap(s=>s.pol==='D'?(s.k==='circle'?Array.from({length:8},(_,k)=>[s.x+s.r*Math.cos(k*Math.PI/4),s.y+s.r*Math.sin(k*Math.PI/4)]):s.pts):[]).map(([px,py])=>[px-cx,cy-py])})}
+   if(!entry.pads.some(q=>q.pin&&q.pin===pin&&Math.hypot(q.x-x,q.y-y)<.01||Math.hypot(q.x-x,q.y-y)<.01)){const hole=holeList.find(h=>!h.slot&&Math.hypot(h.x-x,h.y-y)<.05);entry.pads.push({x,y,pin,net:f.attrs.N?.[0]||'',hole:hole?.d||0,outline:f.shape.flatMap(s=>s.pol==='D'?(s.k==='circle'?Array.from({length:8},(_,k)=>[s.x+s.r*Math.cos(k*Math.PI/4),s.y+s.r*Math.sin(k*Math.PI/4)]):s.pts):[]).map(([px,py])=>[px-cx,cy-py])})}
    padsByRef.set(p,entry)}}
  const meta=new Map();
+ // Some CAD tools also write the component attributes (part number, value, footprint, maker) on the copper pads.
+ for(const side of ['top','bottom']){const l=layers['copper:'+side];if(!l)continue;
+  for(const f of l.flashes){const ref=f.attrs.C?.[0]||f.attrs.P?.[0];if(!ref)continue;const a=f.attrs,prev=meta.get(ref);if(prev?.fromCopper===false)continue;
+   const mpn=a.CMPN?.[0]||'',value=a.CVal?.[0]||'',pkg=a.CFtp?.[0]||a.CPgN?.[0]||'',mfr=a.CMfr?.[0]||'';if(!mpn&&!value&&!pkg&&!mfr)continue;
+   meta.set(ref,{...(prev||{}),ref,value:prev?.value||value,mpn:prev?.mpn||mpn,package:prev?.package||pkg,mfr:prev?.mfr||mfr,fromCopper:true})}}
  for(const side of ['top','bottom']){const l=layers['component:'+side];if(!l)continue;
-  for(const f of l.flashes){const ref=f.attrs.C?.[0];if(!ref||!/ComponentMain/i.test(f.af))continue;meta.set(ref,{ref,x:f.x-cx,y:cy-f.y,side,rot:Number(f.attrs.CRot?.[0]),value:f.attrs.CVal?.[0]||'',mpn:f.attrs.CMPN?.[0]||'',package:f.attrs.CFtp?.[0]||f.attrs.CPgN?.[0]||'',h:Number(f.attrs.CHgt?.[0])||0,mfr:f.attrs.CMfr?.[0]||''})}}
+  for(const f of l.flashes){const ref=f.attrs.C?.[0];if(!ref||!/ComponentMain/i.test(f.af))continue;{const prev=meta.get(ref)||{};meta.set(ref,{ref,x:f.x-cx,y:cy-f.y,side,rot:Number(f.attrs.CRot?.[0]),value:f.attrs.CVal?.[0]||prev.value||'',mpn:f.attrs.CMPN?.[0]||prev.mpn||'',package:f.attrs.CFtp?.[0]||f.attrs.CPgN?.[0]||prev.package||'',h:Number(f.attrs.CHgt?.[0])||0,mfr:f.attrs.CMfr?.[0]||prev.mfr||'',fromCopper:false})}}}
  for(const pf of pnpFiles){try{const {parts:raw}=parsePlacementText(pf.text,pf.name,{raw:true});
   // Placement files may use another origin than the Gerbers. Prefer matching designators to pads, then
   // the file's own coordinates if they land on the board, and centre them only as a last resort.
@@ -356,6 +368,12 @@ export function buildGerberBoard(files,{name}={}){
     warnings.push(pf.name+': its coordinates do not line up with the Gerber origin, so the parts were centred on the board. Check positions, or export the placement file with the same origin as the Gerbers.')}}
   for(const p of raw){const prev=meta.get(p.ref)||{};meta.set(p.ref,{...p,...prev,ref:p.ref,x:prev.x??(p.x+dx),y:prev.y??(p.y+dy),rot:Number.isFinite(prev.rot)?prev.rot:p.rot,value:prev.value||p.value,mpn:prev.mpn||p.mpn,package:prev.package||p.package,side:prev.side||p.side,h:prev.h||0,fromPnp:true,aligned:how})}
  }catch(e){warnings.push(pf.name+': '+e.message)}}
+ // A BOM in the set fills in part numbers, makers, values and footprints by designator (it never moves a part).
+ let fromBom=0;const bom=new Map();
+ // The KiCad board file the Gerbers were plotted from: every footprint's designator, value, footprint and part-number field.
+ const kicadMap=t=>{try{return new Map(parseKicadPcb(t).parts.map(p=>[String(p.ref).toUpperCase(),{mpn:p.mpn||'',manufacturer:p.manufacturer||'',value:p.value||'',package:cleanFootprint(p.package),supplierPn:'',supplier:''}]))}catch{return new Map()}};
+ for(const bf of bomFiles){const m=bf.kicad?kicadMap(bf.text):bf.ibom?new Map([...parseIbom(bf.text)].map(([k,v])=>[k,{mpn:v.mpn,manufacturer:v.manufacturer,value:v.value,package:cleanFootprint(v.package),supplierPn:'',supplier:''}])):parseBomText(bf.text);if(!m.size){warnings.push(bf.name+': no designator and part number columns found, so it was not used.');continue}for(const [k,v] of m)if(!bom.has(k))bom.set(k,{...v,file:bf.name})}
+ const fromFile=ref=>bom.get(String(ref).toUpperCase());
  const parts=[];const refs=new Set([...padsByRef.keys(),...meta.keys()]);
  for(const ref of [...refs].sort(naturalCmp)){
   if(parts.length>=LIMITS.parts){warnings.push(`More than ${LIMITS.parts} components; the rest were skipped.`);break}
@@ -367,17 +385,26 @@ export function buildGerberBoard(files,{name}={}){
   const bodyFromPads=geo&&!/^(J|P|CN|CON|X|SW|S|K|BT|M|MOD|U?ANT|Y|XTAL)\d/i.test(ref);
   const side=m.side||(e?(e.sides.has('top')?'top':'bottom'):'top');
   const x=geo?geo.x:m.x,y=geo?geo.y:m.y;if(!Number.isFinite(x)||!Number.isFinite(y))continue;
-  parts.push(makePart({ref,value:m.value,mpn:m.mpn,package:m.package,x,y,rot:geo?geo.rot:(m.rot||0),side:e&&e.sides.size===1?[...e.sides][0]:side,w:bodyFromPads?geo.w:0,d:bodyFromPads?geo.d:0,h:m.h||undefined,pads:geo?.pads,leads:geo?.tht?'tht':undefined}));
+  const b=fromFile(ref);if(b&&(b.mpn||b.value||b.supplierPn)&&!m.mpn)fromBom++;
+  const mpn=m.mpn||b?.mpn||'',value=m.value||b?.value||'',pkg=m.package||b?.package||'',mfr=m.mfr||b?.manufacturer||'';
+  const part=makePart({ref,value,mpn,package:pkg,x,y,rot:geo?geo.rot:(m.rot||0),side:e&&e.sides.size===1?[...e.sides][0]:side,w:bodyFromPads?geo.w:0,d:bodyFromPads?geo.d:0,h:m.h||undefined,pads:geo?.pads,leads:geo?.tht?'tht':undefined});
+  if(mfr)part.manufacturer=mfr;if(b?.supplierPn){part.supplierPn=b.supplierPn;part.supplier=b.supplier}
+  // The net on each pin (Gerber X2 TO.N): +5V, GND, TX, relay lines… tells what the part does when the files name nothing.
+  if(e?.pads?.some(q=>q.net)){const seen=new Set();part.nets=e.pads.filter(q=>q.net&&!/^N\/C$/i.test(q.net)).map(q=>`${q.pin||'?'}:${q.net}`).filter(x=>!seen.has(x)&&seen.add(x)).slice(0,32)}
+  parts.push(nameFromData(part));
  }
+ // The CAD project name (Gerber X2 TF.ProjectId), e.g. "Bluetooth4Channel": a hint at what the board is.
+ const project=(Object.values(layers).map(l=>l.fileAttrs?.ProjectId?.[0]).find(Boolean)||'').slice(0,80);
  const bounds={minX:-W/2,minY:-H/2,maxX:W/2,maxY:H/2};
  // No component data at all: infer the parts from pads (mask openings), drills and silkscreen.
  let inferred=0;
+ if(!parts.length&&bom.size)warnings.push(`${bomFiles.map(f=>f.name).join(', ')}: the BOM names ${bom.size} designators, but the Gerber set says nowhere where they sit. Add the pick-and-place (centroid) file to the ZIP so each part number lands on its part.`);
  if(!parts.length){const inf=inferComponents({layers:out,holes:holeList,bounds});inf.notes.forEach(n=>warnings.push(n));
   for(const c of inf.parts.slice(0,LIMITS.parts)){const tht=c.geo.tht;parts.push({...makePart({ref:c.ref,type:c.type,package:c.package,x:c.geo.x,y:c.geo.y,rot:c.geo.rot,side:c.side,w:c.geo.w,d:c.geo.d,pads:c.geo.pads,leads:tht?'tht':undefined}),inferred:true,passive:c.passive})}
   inferred=parts.length}
  const fileName=name||files[0]?.name||'gerber';
- const board={name:boardName(fileName,files),revision:'',source:'Gerber',fileName,parts,outline:outline.map(T),holes:[...holes.map(l=>l.map(T)),...cut],traces:{},width:r3(W),height:r3(H),layers:Math.max(copperCount,1),gerber:true};
- const summary={layers:Object.values(layers).map(l=>({kind:l.kind,side:l.side,names:l.names})),drills:drills.map(d=>({name:d.name,hits:d.hits.length,slots:d.slots.length,plated:d.plated})),pnp:pnpFiles.map(f=>f.name),unknown,components:parts.length,attributed:padsByRef.size,fromComponentLayer:[...meta.values()].filter(m=>!m.fromPnp).length,pnpAligned:[...meta.values()].find(m=>m.aligned)?.aligned||null,inferred};
+ const board={name:boardName(fileName,files),revision:'',source:'Gerber',fileName,project,parts,outline:outline.map(T),holes:[...holes.map(l=>l.map(T)),...cut],traces:{},width:r3(W),height:r3(H),layers:Math.max(copperCount,1),gerber:true};
+ const summary={layers:Object.values(layers).map(l=>({kind:l.kind,side:l.side,names:l.names})),drills:drills.map(d=>({name:d.name,hits:d.hits.length,slots:d.slots.length,plated:d.plated})),pnp:pnpFiles.map(f=>f.name),bom:bomFiles.map(f=>f.name),fromBom,withMpn:parts.filter(p=>p.mpn).length,unknown,components:parts.length,attributed:padsByRef.size,fromComponentLayer:[...meta.values()].filter(m=>!m.fromPnp&&m.fromCopper===false).length,pnpAligned:[...meta.values()].find(m=>m.aligned)?.aligned||null,inferred};
  if(inferred)warnings.push(`No component data in these files, so ${inferred} components were inferred from the pads, drills and silkscreen. Designators are generated and part numbers are unknown until identified.`);
  else if(!parts.length)warnings.push('No component data in these files and no pads could be found, so the board has no 3D components. Add the pick-and-place (centroid) file to place them.');
  return {board,layers:out,holes:holeList,bounds,warnings,summary};

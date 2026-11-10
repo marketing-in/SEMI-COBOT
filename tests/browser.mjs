@@ -91,10 +91,9 @@ try{
  // cart, bare PCB material, supplier shipping and free shipping, INR and USD, and the quotation PDF.
  await page.getByRole('navigation').getByRole('button',{name:/^BOM tool/}).click();await page.getByRole('heading',{name:'BOM tool',level:1}).waitFor();
  // The work starts with the bare board; the components come second.
- await page.getByRole('region',{name:'Bare PCB setup'}).waitFor();assert.deepEqual(await page.getByRole('navigation',{name:'BOM workflow'}).locator('button > span').allInnerTexts(),['1','2','3','4']);
- assert.match(await page.getByRole('navigation',{name:'BOM workflow'}).innerText(),/1\s*Bare PCB\s*optional[\s\S]*2\s*Components[\s\S]*3\s*Enclosure\s*optional[\s\S]*4\s*Quotation/);
- assert.match(await page.getByRole('note').filter({hasText:'Step 1 of 4'}).innerText(),/Step 1 of 4 · Bare PCB\. Optional\. Upload the Gerber ZIP/);
- await page.getByRole('button',{name:'Next: Components',exact:true}).click();
+ await page.getByRole('region',{name:'Components'}).waitFor();assert.deepEqual(await page.getByRole('navigation',{name:'BOM workflow'}).locator('button > span').allInnerTexts(),['1','2','3','4']);
+ assert.match(await page.getByRole('navigation',{name:'BOM workflow'}).innerText(),/1\s*Components[\s\S]*2\s*Bare PCB\s*optional[\s\S]*3\s*Enclosure\s*optional[\s\S]*4\s*Quotation/);
+ assert.match(await page.getByRole('note').filter({hasText:'Step 1 of 4'}).innerText(),/Step 1 of 4 · Components\. Required\. Upload your BOM[\s\S]*or the Gerber ZIP/);
  await page.getByRole('button',{name:'Use CTRL-01'}).click();const bomRows=page.locator('table.bom-grid tr.g-row');assert.equal(await bomRows.count(),9);
  await page.getByRole('button',{name:'Get prices'}).click();await page.getByText('Prices and stock updated for 9 lines.').waitFor();
  const kpis=page.getByRole('group',{name:'BOM analysis'});assert.equal(await kpis.getByLabel('Project name').inputValue(),'CTRL-01');
@@ -102,7 +101,8 @@ try{
  assert.deepEqual([...await page.locator('table.bom-grid thead .th-sort').allInnerTexts(),await page.locator('table.bom-grid thead th').last().innerText()],['MPN','Brand','Avail.','Resil.','Quality','Econ.','Sust.','Unit price','Action'],'compact columns as in the reference');
  assert.match(await page.locator('.bom-note').innerText(),/Scores 0–100; click any column to sort, any row to open part detail\.[\s\S]*INR[\s\S]*1 USD = ₹90\.00 · test rate · rate of 30 Oct 2026/);
  const bomRow=mpn=>bomRows.filter({has:page.getByRole('button',{name:'Open '+mpn+' overview',exact:true})});
- assert.match(await bomRow('STM32F407VGT6').innerText(),/Own stock$/);assert.equal(await bomRow('STM32F407VGT6').locator('.part-image').count(),1,'the component picture is in the table');assert.match(await bomRow('1N4148W').innerText(),/· Risk[\s\S]*Add to list$/);assert.match(await bomRow('1N4148W').locator('.g-risk-tag').getAttribute('data-tip'),/Low stock coverage/);
+ assert.match(await bomRow('STM32F407VGT6').innerText(),/Own stock$/);assert.equal(await bomRow('STM32F407VGT6').locator('.part-image').count(),1,'the component picture is in the table');assert.match(await bomRow('1N4148W').innerText(),/· Risk[\s\S]*Add to list\s*Ask quote$/);
+ {const ask=bomRow('1N4148W').getByRole('link',{name:/^Ask .+ to quote 1N4148W$/});const href=decodeURIComponent(await ask.getAttribute('href'));assert.match(href,/^mailto:\?subject=Request for quotation[\s\S]*1\. 1N4148W[\s\S]*quantity [\d,]+/,'a written-out quotation request')}assert.match(await bomRow('1N4148W').locator('.g-risk-tag').getAttribute('data-tip'),/Low stock coverage/);
  assert.match(await bomRow('LM1117MPX-3.3').locator('.g-risk-tag').getAttribute('aria-label'),/^At risk: Out of stock/);
  await bomRow('LM1117MPX-3.3').locator('.g-risk-tag').focus();assert.match(await page.locator('.tip-layer').innerText(),/At risk: Out of stock/,'the risk reasons show as a tooltip on focus');await page.keyboard.press('Escape');assert.equal(await page.locator('.tip-layer').count(),0,'Escape closes the tooltip');assert.equal(await bomRows.locator('td.g-risk').count(),2,'only the two risky parts are highlighted');
  assert.match(await bomRow('STM32F407VGT6').locator('.score').first().getAttribute('aria-label'),/^Resilience: \d+ of 100$/);
@@ -136,7 +136,7 @@ try{
  const ems=offersTbl.locator('tr',{hasText:'EMS Surplus Pvt Ltd'});assert.match(await ems.innerText(),/EMS excess[\s\S]*500[\s\S]*100[\s\S]*₹300\.00[\s\S]*₹200\.00[\s\S]*2431/);
  assert.equal(await ems.getByRole('link',{name:'Chat with Seller'}).getAttribute('href'),'mailto:sales@ems.example?subject=STM32F407VGT6%20offer');
  await ems.getByRole('button',{name:'Bid'}).click();const bd=page.getByRole('dialog',{name:'Bid to EMS Surplus Pvt Ltd'});await bd.getByLabel(/^Target unit price/).fill('250');await bd.getByRole('button',{name:'Save bid'}).click();await page.getByText('Bid for STM32F407VGT6 saved.').waitFor();
- await ov.getByRole('button',{name:'BOM',exact:true}).click();assert.match(await bomRow('STM32F407VGT6').innerText(),/Add to list$/,'the chosen offer replaces own stock for this line');
+ await ov.getByRole('button',{name:'BOM',exact:true}).click();assert.match(await bomRow('STM32F407VGT6').innerText(),/Add to list\s*Ask quote$/,'the chosen offer replaces own stock for this line');
  await bomRow('BSS138').getByRole('button',{name:'Expand BSS138'}).click();await page.locator('tr.g-detail-row').getByRole('button',{name:'View All Market Prices'}).click();await page.getByRole('region',{name:'Offers across all markets'}).waitFor();await page.locator('.bom-overview').getByRole('button',{name:'BOM',exact:true}).click();
  // Purchase list: every priced line, grouped per supplier, as CSV for upload.
  await page.getByRole('button',{name:'Add all to list'}).click();await page.getByText(/^\d+ lines added to the purchase list, \d+ covered by own stock\.$/).waitFor();
@@ -153,7 +153,7 @@ try{
  await bomRow('GRM188R71C104KA01D').getByRole('button',{name:'Expand GRM188R71C104KA01D'}).click();const capDetail=bomRow('GRM188R71C104KA01D').locator('xpath=following-sibling::tr[1]');
  await capDetail.getByLabel('Markup %').fill('50');assert.match(await capDetail.innerText(),/Selling price\s*\$9\.00[\s\S]*Cost\s*\$6\.00/,'600 × $0.01 own stock, 50 % markup');assert.match(await bomRow('GRM188R71C104KA01D').innerText(),/\$6\.00/,'the table total is the cost, like the unit price');
  const bomTotal=page.getByRole('region',{name:'BOM total'}),tv=async label=>+(await bomTotal.locator('.bom-totals div',{has:page.locator('dt',{hasText:new RegExp('^'+label+'$')})}).locator('dd').innerText()).split('\n')[0].replace(/[^\d.-]/g,'');
- await page.getByRole('button',{name:'Back to Bare PCB',exact:true}).click();
+ await page.getByRole('button',{name:'Next: Bare PCB',exact:true}).click();
  const bare=page.getByRole('region',{name:'Bare PCB setup'});
  // Gerber upload: the bare board drawn in 2D, its size and copper layers filled into the form.
  // The BOM came from the board in the 3D view (CTRL-01): its bare board is there before any upload.
@@ -188,8 +188,8 @@ try{
   await steps.getByRole('button',{name:/The bare board from its Gerber/}).click();await page.getByRole('img',{name:/^Top of the bare board from sample-gerber\.zip/}).waitFor({timeout:20000});
   await demo.getByRole('button',{name:'End the demo'}).click();await page.getByText('Demo finished. Your own BOM is back.').waitFor();
   assert.equal(await page.evaluate(()=>localStorage.getItem('semicobot-bom-tool-v1')),own,'the BOM is back exactly as it was');assert.equal(await page.locator('.bom-demo-note').count(),0);
-  assert.equal(await bare.getByLabel('PCB price per board').inputValue(),'2','the demo ends on the first step, the bare board')}
- await page.getByRole('button',{name:'Next: Components',exact:true}).click();await page.getByRole('button',{name:'Next: Enclosure',exact:true}).click();
+  await page.getByRole('button',{name:'Next: Bare PCB',exact:true}).click();assert.equal(await bare.getByLabel('PCB price per board').inputValue(),'2','the demo ends on Components; the bare board kept its price')}
+ await page.getByRole('button',{name:'Next: Enclosure',exact:true}).click();
  const enclosure=page.getByRole('region',{name:'Enclosure and box setup'});
  await enclosure.getByLabel('Enclosure material',{exact:true}).selectOption('ABS plastic');
  await enclosure.getByLabel('Enclosure unit cost (USD)').fill('1.25');
@@ -220,7 +220,7 @@ try{
  {const oc=page.getByRole('region',{name:'Save or continue'});assert.match(await oc.innerText(),/Bare PCB priced[\s\S]*Enclosure custom moulded[\s\S]*Mould Protolabs/);
   assert.equal(await oc.getByRole('button',{name:/Continue to production/}).isDisabled(),true,'the customer is needed to continue');
   await oc.getByLabel('Customer').fill('Orion Boards');await oc.getByRole('button',{name:'Save list'}).click();await page.getByText(/saved \(revision 1\)\. Open it again from Saved lists\./).waitFor()}
- await page.reload();await page.getByRole('heading',{name:'BOM tool',level:1}).waitFor();await page.getByRole('button',{name:'Next: Components',exact:true}).click();await bomRows.first().waitFor();assert.equal(await bomRows.count(),9,'the BOM is kept');
+ await page.reload();await page.getByRole('heading',{name:'BOM tool',level:1}).waitFor();await bomRows.first().waitFor();assert.equal(await bomRows.count(),9,'the BOM is kept');
  await page.unroute('**/api/compare?**');
  await page.getByRole('navigation').getByRole('button',{name:/^Production/}).click();await page.getByRole('heading',{name:'Production',level:1}).waitFor();
  const quote2=page.getByRole('region',{name:'New request'});await quote2.getByLabel('Quantity of boards').fill('200');assert.match(await quote2.getByRole('status').innerText(),/No line is free today/);
@@ -335,7 +335,7 @@ try{
  assert.match(await market.locator('.market-summary').innerText(),/BOARDS THE MARKET CAN SUPPLY[\s\S]*PARTS COST PER BOARD/i);
  const ssListing=market.getByRole('table',{name:'Market listing for SS14'});await ssListing.waitFor();assert.ok(await ssListing.locator('tbody tr').count()>=1,'every row opens into its market listing');
  await market.getByRole('button',{name:'Close the market listing for SS14'}).click();assert.equal(await ssListing.count(),0);await market.getByRole('button',{name:'Open the market listing for SS14'}).click();await ssListing.waitFor();
- if(await page.evaluate(()=>fetch('/api/status').then(r=>r.json()).then(j=>j.gemini).catch(()=>false)))await page.getByRole('button',{name:'Identify with Gemini'}).waitFor();
+ assert.equal(await page.getByRole('button',{name:/Gemini/}).count(),0,'no Gemini in Board studio');
  await page.getByRole('button',{name:'Show bottom side'}).click();await page.getByText('BOTTOM VIEW').waitFor();await page.getByRole('button',{name:'Show top side'}).click();
  await market.getByRole('button',{name:'Compare all markets for STM32F407VGT6'}).click();await page.getByRole('dialog').getByRole('region',{name:/Supplier comparison for STM32F407VGT6/}).waitFor();await page.getByRole('button',{name:'Close dialog'}).click();
  // Gerber fabrication set: exact outline, copper, mask, legend and drills; components from X2 pad attributes.
@@ -346,7 +346,8 @@ try{
   await page.route('**/api/identify',r=>r.fulfill({status:503,contentType:'application/json',body:JSON.stringify({error:'Gemini is unavailable right now. Please try again in a minute.'})}));
   await page.getByRole('button',{name:'Import blueprint'}).first().click();await page.getByLabel('Upload board blueprint').setInputFiles(out('bare-gerber.zip'));
   await page.locator('.studio-note',{hasText:/19 components were inferred from the pads, drills and silkscreen/}).waitFor({timeout:60000});
-  await page.locator('.toast',{hasText:/Gemini is unavailable right now/}).waitFor({state:'attached',timeout:60000});
+  await page.waitForTimeout(1500);assert.equal(await page.locator('.toast',{hasText:/Gemini/}).count(),0,'Gemini does not run');
+  await page.locator('.refetch-note',{hasText:/no value or part number in these files/}).waitFor();
   assert.equal(await page.locator('.board-list-item').count()>=19,true,'inferred parts are listed');
   await page.getByRole('button',{name:'Separate the layers'}).click();await page.getByRole('group',{name:'Board layers'}).getByRole('button',{name:/Silkscreen · top/}).waitFor({timeout:60000});await page.getByRole('button',{name:'Join the layers'}).click();
   await page.unroute('**/api/identify');page.once('dialog',d=>d.accept());await page.locator('button[title*="Remove"]').first().click()}

@@ -37,6 +37,21 @@ export function clean(d){
   source:str(d.source,20)||'import',fetchedAt:str(d.fetchedAt,40)};
 }
 
+// New part numbers go into the part master by themselves: from an imported board or Gerber set, a
+// BOM file, or a Gemini suggestion. Only part numbers the part master and the saved details do not
+// already know are added; nothing is overwritten. items: [{mpn, manufacturer, description, value,
+// package, supplierPn, supplier, from}]; known(mpn) says whether the bundled part master has it.
+export function learnParts(saved,items,{source='board',known=()=>false,now=new Date().toISOString()}={}){
+ const next={...saved},added=[];
+ for(const it of items||[]){const mpn=String(it?.mpn||'').trim().slice(0,100),k=keyOf(mpn);
+  if(k.length<3||next[k]||known(mpn))continue;
+  const specs=[it.value&&it.value!==mpn?{name:'Value',value:String(it.value).slice(0,60)}:null,it.supplierPn?{name:`${it.supplier||'Supplier'} part number`,value:String(it.supplierPn).slice(0,60)}:null].filter(Boolean);
+  next[k]={mpn,manufacturer:String(it.manufacturer||'').slice(0,80),title:'',description:String(it.description||(it.from?`Added from ${it.from}`:'')).slice(0,400),package:String(it.package||'').slice(0,40),datasheet:'',specs,links:[],
+   source:'auto-'+source,addedFrom:String(it.from||'').slice(0,120),fetchedAt:now};
+  added.push(mpn)}
+ return {next,added};
+}
+
 // The directory as JSON: the board's components with whatever details are known, plus every saved entry.
 export function exportJson({board,rows,saved,detailsOf}){
  return {format:'semi-cobot-components',version:1,exportedAt:new Date().toISOString(),board:{id:board.id,name:board.name,width:board.width,height:board.height},

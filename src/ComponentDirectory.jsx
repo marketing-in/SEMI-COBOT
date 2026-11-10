@@ -10,7 +10,7 @@ import {PartKnowledge} from './PartKnowledge.jsx';
 // entry per part number, sorted into the component catalogue. Searching a part that is not listed
 // looks it up (saved copy, then Google through the server) and keeps it in the databank.
 const SOURCES=[['all','All'],['master','Part master'],['saved','Saved'],['inventory','Inventory'],['boards','Boards']];
-const LABEL={master:'Part master',google:'Google',imported:'Imported',inventory:'Inventory',boards:'Boards'};
+const LABEL={master:'Part master',google:'Google',imported:'Imported',added:'Added automatically',inventory:'Inventory',boards:'Boards'};
 const PAGE=100;
 const natural=(a,b)=>String(a).localeCompare(String(b),undefined,{numeric:true,sensitivity:'base'});
 const storage=()=>{try{return localStorage}catch{return null}};
@@ -30,7 +30,7 @@ export default function ComponentDirectory({boards=[],activeBoardId,boardModel=[
   const add=(mpn,src,patch={})=>{const k=keyOf(mpn);if(!k)return null;let r=m.get(k);if(!r){r={key:k,mpn:String(mpn).trim(),type:'',package:'',value:'',leads:'',sources:new Set(),boards:new Map(),inv:null,know:null};m.set(k,r)}
    r.sources.add(src);for(const [f,v] of Object.entries(patch))if(v&&!r[f])r[f]=v;return r};
   for(const e of knowledge?.entries||[])add(e.mpn,'master',{know:{entry:e,match:'exact'},type:knowledgeType(e),package:e.package||e.size||''});
-  for(const d of Object.values(saved))add(d.mpn,d.source==='serpapi'?'google':'imported',{package:d.package});
+  for(const d of Object.values(saved))add(d.mpn,d.source==='serpapi'?'google':/^auto/.test(d.source||'')?'added':'imported',{package:d.package});
   for(const p of parts)add(p.mpn,'inventory',{inv:p,type:invType(p.category),package:p.package&&p.package!=='Unspecified'?p.package:''});
   for(const b of boards){for(const p of b.id===activeBoardId?boardModel:b.parts||[]){if(p.suggested||!p.mpn||p.mpn==='Unnamed part')continue;
    const r=add(p.mpn,'boards',{type:p.type,package:p.package,value:p.value,leads:p.leads});if(r){if(!r.boards.has(b.name))r.boards.set(b.name,[]);r.boards.get(b.name).push(p.ref)}}}
@@ -39,7 +39,7 @@ export default function ComponentDirectory({boards=[],activeBoardId,boardModel=[
  const nodes=useMemo(()=>catalogueNodes(tax),[tax]),order=useMemo(()=>new Map(nodes.map((n,i)=>[[n.category,n.type,n.subtype].filter(Boolean).join('|'),i])),[nodes]);
  const classed=useMemo(()=>records.map(r=>({...r,refs:[...r.boards.values()].flat(),cls:classify({type:r.type,mpn:r.mpn,value:r.value,package:r.package,leads:r.leads},detailsOf(r))}))
   .sort((a,b)=>(order.get([a.cls.category,a.cls.type,a.cls.subtype].join('|'))??1e9)-(order.get([b.cls.category,b.cls.type,b.cls.subtype].join('|'))??1e9)||natural(a.mpn,b.mpn)),[records,order]);// eslint-disable-line react-hooks/exhaustive-deps
- const inSource=r=>source==='all'||(source==='saved'?r.sources.has('google')||r.sources.has('imported'):r.sources.has(source));
+ const inSource=r=>source==='all'||(source==='saved'?r.sources.has('google')||r.sources.has('imported')||r.sources.has('added'):r.sources.has(source));
  const pool=useMemo(()=>classed.filter(inSource),[classed,source]);// eslint-disable-line react-hooks/exhaustive-deps
  const counts=useMemo(()=>{const m=new Map();for(const r of pool){const {category:c,type:t,subtype:s}=r.cls;for(const k of c?[c,c+'|'+t,c+'|'+t+'|'+s]:['']){m.set(k,(m.get(k)||0)+1)}}return m},[pool]);
  const catTotal=nodes.filter(n=>n.level===0).length;
@@ -116,7 +116,7 @@ export default function ComponentDirectory({boards=[],activeBoardId,boardModel=[
     <tr className={isOpen?'open':''}><td><button type="button" className="part-link" aria-expanded={isOpen} onClick={()=>setOpen(isOpen?null:r.key)}><ChevronDown size={14} className="dir-chev"/><span><strong>{r.mpn}</strong><small>{r.package||d?.package||r.type}</small></span></button></td>
      <td className="dir-cat">{r.cls.category?<><span>{r.cls.type} › {r.cls.subtype}</span><small className="price-note">{r.cls.category}</small></>:<span className="muted">Unclassified</span>}</td>
      <td>{d?.manufacturer||<span className="muted">—</span>}</td><td className="dir-desc">{d?.description||<span className="muted">—</span>}</td>
-     <td className="dir-sources">{[...r.sources].map(s=><span key={s} className={'badge '+(s==='google'||s==='imported'?'green':'neutral')}>{LABEL[s]}</span>)}{!d&&serpReady&&<button type="button" className="text-button" onClick={()=>lookup(r.mpn)} disabled={busy.has(r.key)}>{busy.has(r.key)?'Searching…':'Look up'}</button>}</td>
+     <td className="dir-sources">{[...r.sources].map(s=><span key={s} className={'badge '+(s==='google'||s==='imported'||s==='added'?'green':'neutral')}>{LABEL[s]}</span>)}{!d&&serpReady&&<button type="button" className="text-button" onClick={()=>lookup(r.mpn)} disabled={busy.has(r.key)}>{busy.has(r.key)?'Searching…':'Look up'}</button>}</td>
      <td className="dir-actions">{d?.datasheet&&<a className="inline-icon" href={d.datasheet} target="_blank" rel="noreferrer" aria-label={`Datasheet for ${r.mpn}`}><FileText size={15}/></a>}
       {r.inv?<button type="button" className="icon-button" aria-label={`Open ${r.inv.mpn} in inventory`} onClick={()=>onOpenInventory(r.inv)}><ChevronRight size={17}/></button>:<button type="button" className="text-button" aria-label={`Add ${r.mpn} to inventory`} onClick={()=>onAdd(defaults(r,d))}><Plus size={14}/>Add</button>}</td></tr>
     {isOpen&&<tr className="dir-open"><td colSpan={6}><Details r={r} d={d}/></td></tr>}</React.Fragment>})}

@@ -48,7 +48,7 @@ export default function PcbGerber({info,spec,layers,material,boardSource=null,de
   <div className="pcb-gerber-head"><h3 className="bom-sub">{info?.board?'Bare board':'Gerber files'}</h3>
    <span className="pcb-gerber-actions"><button type="button" className="button small" onClick={()=>fileRef.current?.click()} disabled={!!busy}><Upload size={14}/>{info?'Replace':'Upload Gerber'}</button>
     {info&&<button type="button" className="icon-button" aria-label="Remove the Gerber files" onClick={clear}><X size={15}/></button>}</span></div>
-  <input ref={fileRef} type="file" hidden multiple aria-label="Upload Gerber files" accept=".zip,.gbr,.ger,.gtl,.gbl,.gts,.gbs,.gto,.gbo,.gtp,.gbp,.gko,.gml,.gm1,.drl,.xln,.txt" onChange={e=>{read([...e.target.files]);e.target.value=''}}/>
+  <input ref={fileRef} type="file" hidden multiple aria-label="Upload Gerber files" accept=".zip,.gbr,.ger,.gtl,.gbl,.gts,.gbs,.gto,.gbo,.gtp,.gbp,.gko,.gml,.gm1,.drl,.xln,.txt,.pos,.csv,.tsv,.xlsx,.html,.htm,.kicad_pcb" onChange={e=>{read([...e.target.files]);e.target.value=''}}/>
   {info?.board&&<p className="pcb-gerber-board small-copy"><CircuitBoard size={14}/> From the board this BOM was loaded from: <strong>{info.boardName}</strong>{info.drawn==='model'?', drawn from its outline, tracks, pads and holes':''}. No need to upload a Gerber.</p>}
   {busy&&<p className="muted small-copy" role="status">{busy}</p>}
   {error&&<p className="warn-text small-copy" role="alert">{error}</p>}

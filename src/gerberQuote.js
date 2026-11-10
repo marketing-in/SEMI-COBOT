@@ -6,11 +6,19 @@ import {PCB_SPEC} from './bom.js';
 export const GERBER_FILE=/\.(zip|gbr|ger|pho|art|gtl|gbl|gts|gbs|gto|gbo|gtp|gbp|gko|gm\d+|gml|g\d+|gl\d+|cmp|sol|stc|sts|plc|pls|crc|crs|drl|xln|drd|exc|nc|tap|oln|dim)$/i;
 
 // files: File objects (a ZIP or layer files). Returns [{name, text}]; skips documents and archives inside the ZIP.
+// An Excel BOM (or placement sheet) in the set becomes tab-separated text, so it is read like a CSV.
+async function sheetText(bytes){try{const {default:ExcelJS}=await import('exceljs');const wb=new ExcelJS.Workbook();await wb.xlsx.load(bytes);const ws=wb.worksheets[0];if(!ws)return '';const rows=[];
+ ws.eachRow({includeEmpty:false},row=>{const vals=[];row.eachCell({includeEmpty:true},(c,i)=>{const v=c.value;vals[i-1]=String(v&&typeof v==='object'?(v.text??v.result??v.richText?.map(t=>t.text).join('')??''):v??'').replace(/[\t\r\n]+/g,' ')});rows.push(vals.join('\t'))});return rows.join('\n')}catch{return ''}}
 export async function readGerberFiles(list){
  const {unzip,isZip}=await import('./unzip.js');const texts=[],dec=new TextDecoder();let total=0;
  for(const file of list){const bytes=new Uint8Array(await file.arrayBuffer());total+=bytes.length;if(total>60e6)throw Error('The Gerber set is larger than 60 MB.');
-  if(isZip(bytes)){for(const e of await unzip(bytes)){const base=e.name.split('/').pop();if(!base||/\.(pdf|png|jpe?g|step|stp|wrl|kicad_\w+|sch|brd|pcbdoc|zip)$/i.test(base)||e.bytes.length>25e6)continue;texts.push({name:base,text:dec.decode(e.bytes)})}}
-  else texts.push({name:file.name,text:dec.decode(bytes)})}
+  // A ZIP may hold another ZIP (a project folder with Gerber.zip and an ibom.html beside it): opened one level deep.
+  const take=async(entries,depth)=>{for(const e of entries){const base=e.name.split('/').pop();if(!base||e.bytes.length>25e6)continue;
+   if(/\.zip$/i.test(base)){if(depth<1&&isZip(e.bytes)){total+=e.bytes.length;if(total>60e6)throw Error('The Gerber set is larger than 60 MB.');await take(await unzip(e.bytes),depth+1)}continue}
+   if(/\.(pdf|png|jpe?g|step|stp|wrl|kicad_(?!pcb$)\w+|sch|brd|pcbdoc|xls|hex|bin|elf)$/i.test(base))continue;
+   texts.push({name:base,text:/\.xlsx$/i.test(base)?await sheetText(e.bytes):dec.decode(e.bytes)})}};
+  if(isZip(bytes))await take(await unzip(bytes),0)
+  else texts.push({name:file.name,text:/\.xlsx$/i.test(file.name)?await sheetText(bytes):dec.decode(bytes)})}
  if(!texts.length)throw Error('The ZIP holds no Gerber, drill or placement files.');
  return texts}
 

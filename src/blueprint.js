@@ -137,8 +137,22 @@ export function partPads(part){
 const normSide=v=>/^(b|bot|bottom|back|bottomlayer|b\.cu|bottom layer|bottom side)$/i.test(String(v).trim())?'bottom':'top';
 const cleanText=v=>String(v??'').replace(/[\u0000-\u001f]/g,'').trim().slice(0,120);
 
+// A value that is really a manufacturer part number (KiCad and Eagle exports often put "STM32F407VGT6",
+// "SS14" or "BSS138" in the Value field). Passive values (10k, 4K7, 100nF, 2.2uH, 16MHz, 3.3V, 1%) and
+// bare package names stay values.
+const PASSIVE=/^[\d.,]+\s*(p|n|u|µ|m|k|K|M|G|R|Ω)?\s*(F|H|Ω|R|ohms?|Hz|V|A|W|%)?(\s*[\/±].*)?$|^\d+[RKMrkm]\d+$|^\d+(\.\d+)?\s*(mhz|khz|ghz|hz|v|mv|a|ma|w|mw|ppm)\b/i;
+const NOT_MPN=/^(dnp|dnf|nc|n\/?c|led|res|cap|ind|diode|fuse|crystal|xtal|conn|header|jumper|testpoint|tp|logo|mounting.?hole|fiducial|net.?tie|sw|button|switch|relay|buzzer|speaker|mic|antenna|battery)\b/i;
+export function looksLikeMpn(v){
+ const s=String(v||'').trim();if(s.length<4||s.length>40||/\s{2,}/.test(s))return false;
+ if(!/[A-Za-z]/.test(s)||!/\d/.test(s)||PASSIVE.test(s)||NOT_MPN.test(s))return false;
+ // KiCad / Eagle library symbol names (Conn_01x04, R_Small, USB_C_Receptacle) are not part numbers.
+ if(/^(conn|r|c|l|d|q|u|led|sw|usb|jack|screw|pin|header|mounting|crystal|fuse|ferrite|polyfuse|battery|test)_/i.test(s))return false;
+ if(/^(0201|0402|0603|0805|1206|1210|1812|2010|2512|sot|soic|sod|qfn|qfp|lqfp|tqfp|bga|dip|tssop|msop|dfn|to-?\d|sma|smb|smc|do-?\d)/i.test(s))return false;
+ if(/\s/.test(s)&&!/^[A-Z0-9][A-Z0-9\-\/.#+]*\s[A-Z0-9\-\/.#+]+$/i.test(s))return false;
+ return true;
+}
 export function makePart(raw){
- const ref=cleanText(raw.ref),pkg=cleanText(raw.package),value=cleanText(raw.value),mpn=cleanText(raw.mpn);
+ const ref=cleanText(raw.ref),pkg=cleanText(raw.package),value=cleanText(raw.value),mpn=cleanText(raw.mpn)||(looksLikeMpn(cleanText(raw.value))?cleanText(raw.value):'');
  const type=raw.type||inferType(ref,pkg,value);
  let [pw,pd,ph,pleads,pshape]=packageSize(pkg,type);
  // Capacitors: the real body (a 1000 µF can is big, a 100 nF chip is small). Footprint geometry from
@@ -336,4 +350,5 @@ export function parseBlueprint(text,fileName=''){
  if(/\.kicad_pcb$/i.test(fileName)||/^\s*\(kicad_pcb/.test(String(text).slice(0,200)))return parseKicadPcb(text,fileName);
  return parsePlacementText(text,fileName);
 }
-export const displayName=part=>part.inv?.mpn||part.mpn||part.value||part.package||'Unnamed part';
+// A part without a part number or value is named by what it is: "Resistor · 0805", "Integrated circuit · SOIC-8".
+export const displayName=part=>part.inv?.mpn||part.mpn||part.value||(part.package?`${part.typeLabel||(TYPE_LABELS[part.type]&&part.type!=='other'?TYPE_LABELS[part.type]:'Component')} · ${part.package}`:part.typeLabel||(part.type&&part.type!=='other'?TYPE_LABELS[part.type]:'Unnamed part'));
