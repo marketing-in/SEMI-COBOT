@@ -1,0 +1,9 @@
+# semi-cobot placement template. One row per component, positions in millimetres from the board's bottom-left corner.
+# Ref = reference designator, Val = value or manufacturer part number, Package = footprint/package name, Rot = rotation in degrees (counter-clockwise), Side = top or bottom.
+Ref,Val,Package,PosX,PosY,Rot,Side
+U1,STM32F407VGT6,LQFP-100_14x14mm,50.000,33.000,0,top
+U2,LM1117MPX-3.3,SOT-223,18.000,20.000,90,top
+D1,SS14,SMA,18.000,42.000,0,top
+C1,100nF,0603,32.000,10.000,0,top
+R1,10k,0603,32.000,58.000,0,top
+J1,USB4110-GF-A,USB_C_Receptacle,5.000,33.000,90,top

@@ -1,0 +1,66 @@
+%PDF-1.4
+%‚„œ”
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [3 0 R] /Count 1 >>
+endobj
+3 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 842 595] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>
+endobj
+4 0 obj
+<< /Length 1711 >>
+stream
+0.07 0.22 0.52 rg 0 0 842 595 re f
+1 1 1 RG 2 w 50 50 742 495 re S
+BT /F1 13 Tf 1 1 1 rg 60 562 Td (PICTURE BLUEPRINT TEMPLATE  -  draw every component as a closed outline and write its name right next to it) Tj ET
+BT /F1 9 Tf 1 1 1 rg 60 546 Td (Board outline: one big rectangle. Set the real board width in millimetres when you import this page.) Tj ET
+1 1 1 RG 1.5 w 330 290 130 130 re S
+BT /F1 11 Tf 1 1 1 rg 330 278 Td (Main controller IC \(U1\)) Tj ET
+1 1 1 RG 1.5 w 90 430 300 22 re S
+BT /F1 11 Tf 1 1 1 rg 90 458 Td (DIMM memory slot \(J1\)) Tj ET
+1 1 1 RG 1.5 w 560 430 140 22 re S
+BT /F1 11 Tf 1 1 1 rg 560 458 Td (Front panel header \(J2\)) Tj ET
+1 1 1 RG 1.5 w 120 300 44 22 re S
+BT /F1 11 Tf 1 1 1 rg 120 328 Td (Schottky diode SS14 \(D1\)) Tj ET
+1 1 1 rg 500 320 16 16 re f
+1 1 1 rg 524 320 16 16 re f
+1 1 1 rg 548 320 16 16 re f
+1 1 1 rg 572 320 16 16 re f
+BT /F1 11 Tf 1 1 1 rg 500 344 Td (Capacitors 100nF \(C1-C4\)) Tj ET
+1 1 1 RG 1.5 w 200 190 32 32 re S
+BT /F1 11 Tf 1 1 1 rg 200 228 Td (VRM MOSFET \(Q1\)) Tj ET
+1 1 1 RG 1.5 w 500 200 34 22 re S
+BT /F1 11 Tf 1 1 1 rg 500 228 Td (Crystal 8 MHz \(Y1\)) Tj ET
+1 1 1 RG 1.5 w 600 290 44 44 re S
+BT /F1 11 Tf 1 1 1 rg 600 340 Td (Choke / inductor \(L1\)) Tj ET
+1 1 1 RG 1.5 w 735 240 40 64 re S
+BT /F1 11 Tf 1 1 1 rg 690 310 Td (USB connector \(J3\)) Tj ET
+1 1 1 rg 700 150 12 12 re f
+BT /F1 11 Tf 1 1 1 rg 690 170 Td (Status LED \(LED1\)) Tj ET
+1 1 1 RG 1.5 w 300 120 120 40 re S
+BT /F1 11 Tf 1 1 1 rg 300 166 Td (Voltage regulator LM1117 \(U2\)) Tj ET
+BT /F1 9 Tf 1 1 1 rg 60 62 Td (Tip: labels closer than about one tenth of the page to an outline are attached automatically. Part numbers in labels \(SS14, LM1117\) link to inventory.) Tj ET
+endstream
+endobj
+5 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>
+endobj
+6 0 obj
+<< /Title (semi-cobot picture blueprint template) /Producer (semi-cobot) >>
+endobj
+xref
+0 7
+0000000000 65535 f 
+0000000015 00000 n 
+0000000064 00000 n 
+0000000121 00000 n 
+0000000247 00000 n 
+0000002010 00000 n 
+0000002107 00000 n 
+trailer
+<< /Size 7 /Root 1 0 R /Info 6 0 R >>
+startxref
+2198
+%%EOF

@@ -1,0 +1,20 @@
+node_modules/
+dist/
+.env
+.env.*
+!.env.example
+*.tar.gz
+test-results/
+deploy/
+data/part-info.json
+data/part-info.json.tmp
+data/auth.json
+data/auth.json.tmp
+.vercel
+.env*
+
+# Large demo and tour videos stay out of git (the 1.2 MB intro video in public/media is part of the app)
+deliverables/*.mp4
+deliverables/*.mov
+deliverables/*.webm
+deliverables/*.mkv

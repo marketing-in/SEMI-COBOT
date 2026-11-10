@@ -1,0 +1,1120 @@
+{
+  "schema_version": "1.0",
+  "name": "Electronic Component Categories, Types, and Subtypes",
+  "description": "Broad practical catalog of the component families listed in the accompanying conversation. This is not an exhaustive inventory of every specialized component worldwide. Subtypes can overlap across functions; some components appear in multiple categories.",
+  "recommended_part_fields": [
+    "main_category",
+    "component_type",
+    "subtype",
+    "manufacturer",
+    "mpn",
+    "semiconductor_material",
+    "mounting_style",
+    "package",
+    "specifications"
+  ],
+  "field_definitions": {
+    "mpn": "Manufacturer Part Number identifying the exact manufacturer-assigned part.",
+    "semiconductor_material": "Material attribute, independent of component function.",
+    "mounting_style": "How a part is mounted; separate from component type.",
+    "package": "Physical package or standardized size; separate from component type."
+  },
+  "common_attributes": {
+    "semiconductor_materials": [
+      "Silicon (Si)",
+      "Silicon carbide (SiC)",
+      "Gallium nitride (GaN)",
+      "Gallium arsenide (GaAs)"
+    ],
+    "mounting_styles": [
+      "Surface-mount (SMD/SMT)",
+      "Through-hole"
+    ],
+    "package_examples": [
+      "0603",
+      "SOT-23",
+      "DIP",
+      "QFN",
+      "BGA"
+    ]
+  },
+  "categories": [
+    {
+      "name": "Conductors, wires, and cables",
+      "component_types": [
+        {
+          "name": "Wire",
+          "subtypes": [
+            "Solid",
+            "Stranded",
+            "Hookup",
+            "Magnet/enamelled",
+            "Litz",
+            "Resistance wire"
+          ]
+        },
+        {
+          "name": "Cable",
+          "subtypes": [
+            "Single-core",
+            "Multicore",
+            "Twisted-pair",
+            "Coaxial",
+            "Ribbon",
+            "Shielded",
+            "Unshielded"
+          ]
+        },
+        {
+          "name": "Flexible circuits",
+          "subtypes": [
+            "Flat flexible cable (FFC)",
+            "Flexible printed circuit (FPC)"
+          ]
+        },
+        {
+          "name": "Power conductors",
+          "subtypes": [
+            "Busbar",
+            "Copper braid",
+            "Grounding strap"
+          ]
+        },
+        {
+          "name": "Conductive materials",
+          "subtypes": [
+            "Copper foil",
+            "Aluminium foil",
+            "Conductive tape",
+            "Conductive adhesive"
+          ]
+        },
+        {
+          "name": "Cable assemblies",
+          "subtypes": [
+            "Power cord",
+            "USB cable",
+            "RF cable",
+            "Ethernet cable",
+            "Wiring harness"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Passive components",
+      "component_types": [
+        {
+          "name": "Fixed resistor",
+          "subtypes": [
+            "Carbon composition",
+            "Carbon film",
+            "Metal film",
+            "Metal oxide",
+            "Thick film",
+            "Thin film",
+            "Wirewound",
+            "Metal foil"
+          ]
+        },
+        {
+          "name": "Variable resistor",
+          "subtypes": [
+            "Potentiometer",
+            "Rheostat",
+            "Trimmer",
+            "Digital potentiometer"
+          ],
+          "attributes": {
+            "mechanical_styles": [
+              "Rotary",
+              "Slide"
+            ]
+          }
+        },
+        {
+          "name": "Special resistor",
+          "subtypes": [
+            "Current-sense/shunt",
+            "High-voltage",
+            "Fusible",
+            "Pulse-rated",
+            "Resistor network/array"
+          ]
+        },
+        {
+          "name": "Thermistor",
+          "subtypes": [
+            "NTC",
+            "PTC"
+          ]
+        },
+        {
+          "name": "Photoresistor",
+          "subtypes": [
+            "Light-dependent resistor (LDR)"
+          ]
+        },
+        {
+          "name": "Ceramic capacitor",
+          "subtypes": [
+            "Single-layer",
+            "Multilayer (MLCC)"
+          ],
+          "attributes": {
+            "dielectric_codes": [
+              "C0G/NP0",
+              "X7R",
+              "X5R",
+              "Y5V"
+            ]
+          }
+        },
+        {
+          "name": "Aluminium capacitor",
+          "subtypes": [
+            "Wet electrolytic",
+            "Polymer",
+            "Hybrid"
+          ],
+          "attributes": {
+            "polarities": [
+              "Polarized",
+              "Bipolar"
+            ]
+          }
+        },
+        {
+          "name": "Tantalum capacitor",
+          "subtypes": [
+            "Solid manganese dioxide",
+            "Polymer",
+            "Wet tantalum"
+          ]
+        },
+        {
+          "name": "Film capacitor",
+          "subtypes": [
+            "Polyester",
+            "Polypropylene",
+            "PPS",
+            "PTFE"
+          ],
+          "attributes": {
+            "constructions": [
+              "Metallized film",
+              "Film/foil"
+            ]
+          }
+        },
+        {
+          "name": "Other capacitor",
+          "subtypes": [
+            "Mica",
+            "Glass",
+            "Paper",
+            "Silicon"
+          ]
+        },
+        {
+          "name": "Variable capacitor",
+          "subtypes": [
+            "Air variable",
+            "Vacuum variable",
+            "Trimmer"
+          ]
+        },
+        {
+          "name": "Supercapacitor",
+          "subtypes": [
+            "Electric double-layer",
+            "Pseudocapacitor",
+            "Hybrid"
+          ]
+        },
+        {
+          "name": "Inductor",
+          "subtypes": [
+            "Air-core",
+            "Ferrite-core",
+            "Iron-powder-core"
+          ],
+          "attributes": {
+            "constructions": [
+              "Wirewound",
+              "Multilayer",
+              "Thin film"
+            ]
+          }
+        },
+        {
+          "name": "Choke",
+          "subtypes": [
+            "RF choke",
+            "Power choke",
+            "Common-mode choke",
+            "Differential-mode choke"
+          ]
+        },
+        {
+          "name": "Ferrite component",
+          "subtypes": [
+            "Ferrite bead",
+            "Ferrite sleeve",
+            "Clamp-on core"
+          ]
+        },
+        {
+          "name": "Transformer",
+          "subtypes": [
+            "Power",
+            "Isolation",
+            "Autotransformer",
+            "Pulse",
+            "Audio",
+            "RF",
+            "Current",
+            "Voltage"
+          ]
+        },
+        {
+          "name": "Filter",
+          "subtypes": [
+            "LC",
+            "EMI/RFI",
+            "Feedthrough",
+            "Ceramic",
+            "SAW",
+            "BAW"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Discrete semiconductors",
+      "component_types": [
+        {
+          "name": "Rectifier diode",
+          "subtypes": [
+            "Standard recovery",
+            "Fast recovery",
+            "Ultrafast recovery",
+            "Schottky",
+            "Bridge rectifier"
+          ]
+        },
+        {
+          "name": "Signal diode",
+          "subtypes": [
+            "Small-signal switching",
+            "General-purpose"
+          ]
+        },
+        {
+          "name": "Voltage-reference diode",
+          "subtypes": [
+            "Zener",
+            "Avalanche"
+          ]
+        },
+        {
+          "name": "Protection diode",
+          "subtypes": [
+            "TVS",
+            "ESD protection",
+            "Diode array"
+          ]
+        },
+        {
+          "name": "RF and special diode",
+          "subtypes": [
+            "PIN",
+            "Varactor/varicap",
+            "Tunnel",
+            "Step-recovery",
+            "Constant-current"
+          ]
+        },
+        {
+          "name": "Bipolar transistor (BJT)",
+          "subtypes": [
+            "NPN",
+            "PNP",
+            "Darlington",
+            "Pre-biased/digital"
+          ]
+        },
+        {
+          "name": "MOSFET",
+          "subtypes": [
+            "N-channel",
+            "P-channel"
+          ],
+          "attributes": {
+            "operating_modes": [
+              "Enhancement",
+              "Depletion"
+            ],
+            "configurations": [
+              "Single",
+              "Dual",
+              "Array"
+            ]
+          }
+        },
+        {
+          "name": "JFET",
+          "subtypes": [
+            "N-channel",
+            "P-channel"
+          ]
+        },
+        {
+          "name": "IGBT",
+          "subtypes": [
+            "Discrete IGBT",
+            "IGBT module"
+          ]
+        },
+        {
+          "name": "Thyristor",
+          "subtypes": [
+            "SCR",
+            "TRIAC",
+            "DIAC",
+            "SIDAC",
+            "GTO"
+          ]
+        },
+        {
+          "name": "Other transistor",
+          "subtypes": [
+            "Unijunction transistor (UJT)",
+            "Programmable UJT"
+          ]
+        },
+        {
+          "name": "Power semiconductor module",
+          "subtypes": [
+            "Diode module",
+            "MOSFET module",
+            "Thyristor module",
+            "Intelligent power module"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Integrated circuits",
+      "component_types": [
+        {
+          "name": "Processor",
+          "subtypes": [
+            "CPU/MPU",
+            "GPU",
+            "DSP",
+            "AI accelerator (NPU/TPU)",
+            "Application processor"
+          ]
+        },
+        {
+          "name": "Microcontroller",
+          "subtypes": [
+            "8-bit",
+            "16-bit",
+            "32-bit"
+          ],
+          "attributes": {
+            "applications": [
+              "General-purpose",
+              "Wireless",
+              "Automotive"
+            ]
+          }
+        },
+        {
+          "name": "System-on-chip",
+          "subtypes": [
+            "Application SoC",
+            "Wireless SoC",
+            "Mixed-signal SoC"
+          ]
+        },
+        {
+          "name": "Programmable logic",
+          "subtypes": [
+            "FPGA",
+            "CPLD"
+          ]
+        },
+        {
+          "name": "Custom and application-specific IC",
+          "subtypes": [
+            "ASIC",
+            "Application-specific standard product (ASSP)"
+          ]
+        },
+        {
+          "name": "Memory",
+          "subtypes": [
+            "SRAM",
+            "DRAM",
+            "SDRAM",
+            "NOR Flash",
+            "NAND Flash",
+            "EEPROM",
+            "ROM",
+            "FRAM",
+            "MRAM"
+          ]
+        },
+        {
+          "name": "Logic IC",
+          "subtypes": [
+            "Gate",
+            "Buffer",
+            "Inverter",
+            "Flip-flop",
+            "Latch",
+            "Counter",
+            "Shift register",
+            "Multiplexer"
+          ]
+        },
+        {
+          "name": "Amplifier",
+          "subtypes": [
+            "Operational",
+            "Instrumentation",
+            "Differential",
+            "Isolation",
+            "Audio",
+            "RF"
+          ]
+        },
+        {
+          "name": "Comparator",
+          "subtypes": [
+            "General-purpose",
+            "Precision",
+            "High-speed",
+            "Window"
+          ]
+        },
+        {
+          "name": "Data converter and analog front end",
+          "subtypes": [
+            "ADC",
+            "DAC",
+            "Analog front end"
+          ]
+        },
+        {
+          "name": "Power-management IC",
+          "subtypes": [
+            "LDO",
+            "Linear regulator",
+            "Buck",
+            "Boost",
+            "Buck-boost",
+            "Charge pump",
+            "PMIC"
+          ]
+        },
+        {
+          "name": "Battery-management IC",
+          "subtypes": [
+            "Charger",
+            "Fuel gauge",
+            "Battery monitor",
+            "Protection",
+            "Balancing"
+          ]
+        },
+        {
+          "name": "Driver IC",
+          "subtypes": [
+            "MOSFET/IGBT gate",
+            "Motor",
+            "LED",
+            "Display",
+            "Relay",
+            "Solenoid"
+          ]
+        },
+        {
+          "name": "Interface IC",
+          "subtypes": [
+            "USB",
+            "UART",
+            "RS-232",
+            "RS-485",
+            "CAN",
+            "LIN",
+            "Ethernet",
+            "PCIe"
+          ]
+        },
+        {
+          "name": "Wireless/RF IC",
+          "subtypes": [
+            "Wi-Fi",
+            "Bluetooth",
+            "Cellular",
+            "GNSS",
+            "NFC",
+            "RFID",
+            "RF transceiver"
+          ]
+        },
+        {
+          "name": "Timing IC",
+          "subtypes": [
+            "Timer",
+            "RTC",
+            "Clock generator",
+            "Clock buffer",
+            "PLL"
+          ]
+        },
+        {
+          "name": "Audio/video IC",
+          "subtypes": [
+            "Codec",
+            "Audio processor",
+            "Video encoder/decoder",
+            "Image processor"
+          ]
+        },
+        {
+          "name": "Security IC",
+          "subtypes": [
+            "Secure element",
+            "TPM",
+            "Authentication",
+            "Cryptographic processor"
+          ]
+        },
+        {
+          "name": "Supervisory IC",
+          "subtypes": [
+            "Reset controller",
+            "Watchdog",
+            "Voltage monitor",
+            "Power sequencer"
+          ]
+        },
+        {
+          "name": "Analog switch",
+          "subtypes": [
+            "Analog switch",
+            "Multiplexer",
+            "Crosspoint switch"
+          ]
+        },
+        {
+          "name": "Digital potentiometer",
+          "subtypes": [
+            "Volatile",
+            "Nonvolatile"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Optoelectronics and displays",
+      "component_types": [
+        {
+          "name": "LED",
+          "subtypes": [
+            "Indicator",
+            "High-power",
+            "RGB",
+            "Addressable",
+            "Infrared",
+            "Ultraviolet"
+          ]
+        },
+        {
+          "name": "Laser diode",
+          "subtypes": [
+            "Visible",
+            "Infrared",
+            "VCSEL"
+          ]
+        },
+        {
+          "name": "Optical detector",
+          "subtypes": [
+            "Photodiode",
+            "Phototransistor",
+            "Avalanche photodiode",
+            "Silicon photomultiplier"
+          ]
+        },
+        {
+          "name": "Optical isolation",
+          "subtypes": [
+            "Phototransistor optocoupler",
+            "Phototriac optocoupler",
+            "Linear optocoupler",
+            "Photovoltaic isolator"
+          ]
+        },
+        {
+          "name": "Display",
+          "subtypes": [
+            "LCD",
+            "OLED",
+            "LED matrix",
+            "Seven-segment",
+            "E-paper",
+            "VFD"
+          ]
+        },
+        {
+          "name": "Optical communication",
+          "subtypes": [
+            "Fiber-optic transmitter",
+            "Fiber-optic receiver",
+            "Fiber-optic transceiver"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Sensors and transducers",
+      "component_types": [
+        {
+          "name": "Temperature sensor",
+          "subtypes": [
+            "Thermistor",
+            "RTD",
+            "Thermocouple",
+            "Semiconductor temperature sensor"
+          ]
+        },
+        {
+          "name": "Motion sensor",
+          "subtypes": [
+            "Accelerometer",
+            "Gyroscope",
+            "IMU",
+            "Vibration sensor"
+          ]
+        },
+        {
+          "name": "Magnetic/current sensor",
+          "subtypes": [
+            "Hall-effect",
+            "Magnetoresistive",
+            "Fluxgate",
+            "Current transformer"
+          ]
+        },
+        {
+          "name": "Pressure sensor",
+          "subtypes": [
+            "Absolute",
+            "Gauge",
+            "Differential"
+          ]
+        },
+        {
+          "name": "Position/proximity sensor",
+          "subtypes": [
+            "Inductive",
+            "Capacitive",
+            "Optical",
+            "Magnetic",
+            "Encoder"
+          ]
+        },
+        {
+          "name": "Distance sensor",
+          "subtypes": [
+            "Ultrasonic",
+            "Infrared",
+            "Time-of-flight",
+            "LiDAR"
+          ]
+        },
+        {
+          "name": "Environmental sensor",
+          "subtypes": [
+            "Humidity",
+            "Gas",
+            "Smoke",
+            "Particulate",
+            "Ambient-light",
+            "UV"
+          ]
+        },
+        {
+          "name": "Mechanical sensor",
+          "subtypes": [
+            "Load cell",
+            "Strain gauge",
+            "Force",
+            "Torque"
+          ]
+        },
+        {
+          "name": "Fluid sensor",
+          "subtypes": [
+            "Flow",
+            "Level",
+            "Conductivity"
+          ]
+        },
+        {
+          "name": "Imaging sensor",
+          "subtypes": [
+            "CMOS image sensor",
+            "CCD"
+          ]
+        },
+        {
+          "name": "Sound transducer",
+          "subtypes": [
+            "MEMS microphone",
+            "Electret microphone",
+            "Piezoelectric transducer"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Electromechanical components",
+      "component_types": [
+        {
+          "name": "Switch",
+          "subtypes": [
+            "Pushbutton",
+            "Toggle",
+            "Rocker",
+            "Slide",
+            "Tactile",
+            "DIP",
+            "Rotary",
+            "Reed",
+            "Limit"
+          ]
+        },
+        {
+          "name": "Relay",
+          "subtypes": [
+            "Signal",
+            "Power",
+            "Reed",
+            "Latching",
+            "Automotive",
+            "Solid-state"
+          ]
+        },
+        {
+          "name": "Contactor",
+          "subtypes": [
+            "AC",
+            "DC",
+            "Reversing"
+          ]
+        },
+        {
+          "name": "Motor",
+          "subtypes": [
+            "Brushed DC",
+            "Brushless DC",
+            "Stepper",
+            "Servo",
+            "AC induction",
+            "Synchronous"
+          ]
+        },
+        {
+          "name": "Actuator",
+          "subtypes": [
+            "Solenoid",
+            "Linear actuator",
+            "Piezoelectric actuator"
+          ]
+        },
+        {
+          "name": "Audio device",
+          "subtypes": [
+            "Speaker",
+            "Buzzer",
+            "Sounder"
+          ]
+        },
+        {
+          "name": "Cooling device",
+          "subtypes": [
+            "Fan",
+            "Blower"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Connectors and interconnects",
+      "component_types": [
+        {
+          "name": "PCB connector",
+          "subtypes": [
+            "Pin header",
+            "Socket",
+            "Board-to-board",
+            "Wire-to-board",
+            "Card-edge"
+          ]
+        },
+        {
+          "name": "Terminal connection",
+          "subtypes": [
+            "Screw terminal",
+            "Spring terminal",
+            "Terminal block",
+            "Crimp terminal",
+            "Lug"
+          ]
+        },
+        {
+          "name": "Circular connector",
+          "subtypes": [
+            "DIN",
+            "M8",
+            "M12",
+            "Industrial circular"
+          ]
+        },
+        {
+          "name": "Data connector",
+          "subtypes": [
+            "USB",
+            "HDMI",
+            "DisplayPort",
+            "Modular/RJ",
+            "D-sub"
+          ]
+        },
+        {
+          "name": "RF connector",
+          "subtypes": [
+            "SMA",
+            "SMB",
+            "BNC",
+            "TNC",
+            "N-type",
+            "U.FL"
+          ]
+        },
+        {
+          "name": "Power connector",
+          "subtypes": [
+            "Barrel",
+            "IEC",
+            "Blade",
+            "Battery",
+            "High-current"
+          ]
+        },
+        {
+          "name": "Other interconnect",
+          "subtypes": [
+            "IC socket",
+            "Test point",
+            "Pogo pin",
+            "FFC/FPC connector"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Circuit protection",
+      "component_types": [
+        {
+          "name": "Fuse",
+          "subtypes": [
+            "Cartridge",
+            "Blade",
+            "SMD",
+            "Thermal"
+          ],
+          "attributes": {
+            "response_characteristics": [
+              "Fast-acting",
+              "Time-delay"
+            ]
+          }
+        },
+        {
+          "name": "Resettable protection",
+          "subtypes": [
+            "Polymer PTC",
+            "Ceramic PTC"
+          ]
+        },
+        {
+          "name": "Circuit breaker",
+          "subtypes": [
+            "Thermal",
+            "Magnetic",
+            "Thermal-magnetic",
+            "Electronic"
+          ]
+        },
+        {
+          "name": "Surge protection",
+          "subtypes": [
+            "MOV",
+            "Gas-discharge tube",
+            "TVS diode",
+            "Thyristor surge protector"
+          ]
+        },
+        {
+          "name": "Inrush protection",
+          "subtypes": [
+            "NTC limiter",
+            "Active inrush controller"
+          ]
+        },
+        {
+          "name": "Thermal protection",
+          "subtypes": [
+            "Thermal cutoff",
+            "Thermostat",
+            "Thermal switch"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Timing, power sources, and supporting parts",
+      "component_types": [
+        {
+          "name": "Crystal/resonator",
+          "subtypes": [
+            "Quartz crystal",
+            "Ceramic resonator",
+            "SAW resonator"
+          ]
+        },
+        {
+          "name": "Oscillator",
+          "subtypes": [
+            "XO",
+            "TCXO",
+            "VCXO",
+            "OCXO",
+            "MEMS oscillator"
+          ]
+        },
+        {
+          "name": "Battery",
+          "subtypes": [
+            "Alkaline",
+            "Lithium primary",
+            "Lithium-ion",
+            "Lithium-polymer",
+            "NiMH",
+            "Lead-acid"
+          ]
+        },
+        {
+          "name": "Power module",
+          "subtypes": [
+            "AC/DC",
+            "DC/DC",
+            "Inverter"
+          ],
+          "attributes": {
+            "isolation": [
+              "Isolated",
+              "Non-isolated"
+            ]
+          }
+        },
+        {
+          "name": "Energy harvesting",
+          "subtypes": [
+            "Solar cell",
+            "Thermoelectric generator",
+            "Piezoelectric harvester"
+          ]
+        },
+        {
+          "name": "Thermal part",
+          "subtypes": [
+            "Heatsink",
+            "Thermal pad",
+            "Thermal paste",
+            "Heat pipe"
+          ]
+        },
+        {
+          "name": "Hardware",
+          "subtypes": [
+            "Standoff",
+            "Spacer",
+            "Screw",
+            "Clip",
+            "Enclosure"
+          ]
+        },
+        {
+          "name": "PCB material",
+          "subtypes": [
+            "Bare PCB",
+            "Copper-clad laminate",
+            "Prototyping board"
+          ]
+        }
+      ]
+    }
+  ],
+  "examples": [
+    {
+      "main_category": "Passive components",
+      "component_type": "Ceramic capacitor",
+      "subtype": "Multilayer (MLCC)"
+    },
+    {
+      "main_category": "Discrete semiconductors",
+      "component_type": "Rectifier diode",
+      "subtype": "Schottky"
+    },
+    {
+      "main_category": "Discrete semiconductors",
+      "component_type": "MOSFET",
+      "subtype": "N-channel",
+      "specifications": {
+        "operating_mode": "Enhancement"
+      }
+    },
+    {
+      "main_category": "Integrated circuits",
+      "component_type": "Microcontroller",
+      "subtype": "32-bit"
+    },
+    {
+      "main_category": "Conductors, wires, and cables",
+      "component_type": "Wire",
+      "subtype": "Hookup",
+      "specifications": {
+        "construction": "Stranded"
+      }
+    }
+  ],
+  "reference_catalogs": [
+    {
+      "name": "DigiKey product categories",
+      "url": "https://www.digikey.in/en/products"
+    },
+    {
+      "name": "Mouser electronic components",
+      "url": "https://www.mouser.com/en/electronic-components/"
+    }
+  ]
+}

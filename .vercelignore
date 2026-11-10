@@ -1,0 +1,15 @@
+# The Vercel CLI uploads everything not listed here; it does not read .gitignore.
+# Secrets and local data never leave this machine. A leading / anchors a pattern to the project root:
+# without it, data/ would also drop public/data, which the app loads at runtime.
+.env
+.env.*
+!.env.example
+/data/
+/deploy/
+/dist/
+node_modules/
+/test-results/
+/tests/
+/scripts/
+/supabase/
+*.tar.gz
