@@ -1,4 +1,4 @@
-import React,{useEffect,useId,useMemo,useRef,useState} from 'react';
+import React,{lazy,Suspense,useEffect,useId,useMemo,useRef,useState} from 'react';
 import {PlayCircle,Bookmark,Factory,CheckCircle2,Calculator,RefreshCw,Trash2,Plus,Upload,FileDown,ArrowRight,ArrowUpRight,TriangleAlert,X,Truck,CircuitBoard,ClipboardList,Replace,Search,ChevronDown,ChevronRight,Columns3,Gavel,ArrowUpDown,ArrowUp,ArrowDown,Info} from 'lucide-react';
 import {isAuthorized,cartUnit,MAX_MARGIN,marketLabel,availability,rowCost,sourcingAlerts,pcbEstimate,pcbFieldsFor,pcbSpecText,typicalBoard,purchasePlan,rowsFromParts,rowsFromTable,offerKey,unitAt,marketStock,recommend,allOffers,orderQty,offerLeadDays,supplierShipping,quoteTotals,riskOf,bomSummary,cartAdd,PRICING,PCB_MATERIALS} from './bom.js';
 import {scoreRow,SCORES} from './bomScores.js';
@@ -10,6 +10,9 @@ import PcbGerber from './PcbGerber.jsx';
 import {viaOptionFor} from './gerberQuote.js';
 import {demoBomState,DEMO_GERBER} from './bomDemo.js';
 import BomTour from './BomTour.jsx';
+// The 3D board view (three.js) loads only when a BOM came from a board.
+const Board=lazy(()=>import('./Board.jsx'));
+const SHOW_3D='semicobot-bom-3d-v1';
 import {BOM_DEMO} from './Tour.jsx';
 import {lookupPart,alternatesOf} from './partMaster.js';
 import {quotePdf,quoteNumber} from './quotePdf.js';
@@ -20,6 +23,7 @@ import {saveList,loadLists} from './savedLists.js';
 import {loadVendorData,vendorOffersFor} from './vendors.js';
 import {learnParts,loadDetails,saveDetails} from './partDetails.js';
 import {rfqMail,vendorEmail} from './rfq.js';
+import {loadLedger,saveLedger,placeOrder} from './ledger.js';
 
 // BOM tool: analyse and price a bill of materials for a build. Rows come from a board, the inventory
 // or an uploaded BOM file; /api/compare asks the connected distributors (keys stay on the server) for
@@ -32,16 +36,16 @@ import {rfqMail,vendorEmail} from './rfq.js';
 const STORE='semicobot-bom-tool-v1',FROM='semicobot-quote-from-v1',BACKUP='semicobot-bom-backup-v1';
 // The order of the work: the bare board first (its outline sizes the enclosure), then the components,
 // the enclosure, the mould for a custom enclosure, and the quotation with Save list and Continue.
-const STEPS=['Components','Bare PCB','Enclosure','Quotation'];
-// Only the components are needed; the bare board and the enclosure (with its mould) are options.
-const OPTIONAL=new Set(['Bare PCB','Enclosure']);
+const STEPS=['Bare PCB','Components','Enclosure','Quotation'];
+// The bare board and the components are needed for every quote; the enclosure (with its mould) is an option.
+const OPTIONAL=new Set(['Enclosure']);
 // One plain sentence per step: what to do here and where it goes next.
 const GUIDE=[
- 'Required. Upload your BOM: an Excel or CSV sheet (MPN and quantity), or the Gerber ZIP with its BOM, .pos, .kicad_pcb or ibom.html, which also sets the bare PCB. Each line is priced from your own stock first, then authorised distributors, registered vendors and the open market.',
- 'Optional. The board size and layers come from the Gerber (uploaded here or in Components) and fill the PCB quote; the board opens in Board studio and its size sizes the enclosure. No bare PCB? Skip to Enclosure.',
+ 'Required. Upload the Gerber ZIP: the board size and layers fill the PCB quote, the board opens in Board studio, and its parts (from the BOM, .pos, .kicad_pcb or ibom.html in the ZIP) fill the Components step. No Gerber yet? Set the size by hand. Enter the fab\'s price, or use the estimate.',
+ 'Required. Check the lines from the Gerber, or upload your BOM: an Excel or CSV sheet (MPN and quantity) or ibom.html. Each line is priced from your own stock first, then authorised distributors, registered vendors and the open market; Ask quote mails a distributor for a quotation.',
  'Optional. Choose off the shelf or custom moulded. A custom enclosure gets its mould here: the estimate, the mould makers and the maker\'s quote.',
  'Check the totals, download the quotation PDF, then Save list to come back later or Continue to send it to production.'];
-const DEFAULT={project:'',customer:'',due:'',listId:null,from:'',boards:100,margin:15,method:'markup',rows:[],pcb:{material:'',choice:'',widthMm:100,heightMm:67,layers:2,spec:{},gerber:null,unit:null,margin:0,vendor:''},
+const DEFAULT={project:'',customer:'',due:'',listId:null,from:'',boards:100,margin:15,method:'markup',rows:[],pcb:{material:'fr4',choice:'',widthMm:100,heightMm:67,layers:2,spec:{},gerber:null,unit:null,margin:0,vendor:''},
  history:{},purchases:{},hikes:{three:3,nine:9},
  box:{material:'',kind:'shelf',vendor:'',clearance:3,wall:2,standoff:5,pcbThickness:1.6,component:15,top:3,notes:'',unit:null,tooling:null},
  mould:{cavities:1,toolClass:'',maker:'',tooling:null,unit:null,leadWeeks:'',resinPerKg:null,machinePerHour:null,notes:''},
@@ -53,6 +57,7 @@ function load(){try{let v=JSON.parse(localStorage.getItem(STORE));
  // Earlier versions: pcb.on and shipping {on, amount}.
  if(v.pcb&&'on' in v.pcb&&!('material' in v.pcb))s.pcb={...DEFAULT.pcb,...v.pcb,material:v.pcb.on?'fr4':''};
  else s.pcb={...DEFAULT.pcb,...v.pcb};
+ if(!s.pcb.material)s.pcb={...s.pcb,material:'fr4'};
  s.box={...DEFAULT.box,...v.box};s.mould={...DEFAULT.mould,...v.mould};
  if(v.shipping&&'amount' in v.shipping&&!('deliveryCost' in v.shipping))s.shipping={...DEFAULT.shipping,deliveryCost:v.shipping.on?+v.shipping.amount||0:0,note:v.shipping.note||''};
  return s}catch{return DEFAULT}}
@@ -143,6 +148,10 @@ export default function BomTool({parts=[],boards=[],activeBoardId,boardModel=[],
  const gerberBoard=useMemo(()=>!bomBoardRaw||s.pcb.gerberOff===bomBoardRaw.id||!(bomBoardRaw.width>0&&bomBoardRaw.height>0)?null:
   bomBoardRaw.id===activeBoardId?{...bomBoardRaw,parts:boardModel.filter(p=>!p.suggested)}:bomBoardRaw,[bomBoardRaw?.id,s.pcb.gerberOff,activeBoardId]);// eslint-disable-line react-hooks/exhaustive-deps
  const setSpec=(id,v)=>set(x=>({pcb:{...x.pcb,spec:{...x.pcb.spec,[id]:v},unit:null}}));
+ // Components step: the board the Gerber (or board file) built, small and in 3D; a click opens its BOM line.
+ const [show3d,setShow3d]=useState(()=>{try{return localStorage.getItem(SHOW_3D)!=='off'}catch{return true}});
+ const toggle3d=on=>{setShow3d(on);try{localStorage.setItem(SHOW_3D,on?'on':'off')}catch{}};
+ const lineOf=ref=>s.rows.find(r=>(r.refs||[]).some(x=>String(x).toUpperCase()===String(ref).toUpperCase()));
  // A Gerber set fills the board size and copper layers (FR-4 when no material is chosen yet) and the
  // via option its smallest plated hole needs; the remaining options stay as chosen.
  const readGerber=g=>{const via=viaOptionFor(g.minHoleMm);set(x=>{const id=x.pcb.material||'fr4',m=PCB_MATERIALS.find(y=>y.id===id)||PCB_MATERIALS[0];
@@ -238,7 +247,16 @@ export default function BomTool({parts=[],boards=[],activeBoardId,boardModel=[],
    if(c.buy>0&&c.offer&&c.unit!=null){const it=cartItem(r,c.offer,c.buy),k=it.mpn.toUpperCase()+'|'+it.seller,prev=batch.get(k);batch.set(k,prev?{...it,qty:prev.qty+it.qty,ref:[prev.ref,it.ref].filter(Boolean).join(' ').slice(0,60)}:it);n++}
    else if(c.source==='own')own++;else if(c.need)none++});
   let cart=s.cart;for(const it of batch.values())cart=cartAdd(cart,{...it,unit:cartUnit(it,it.qty)});set({cart});notify(`${n} line${n===1?'':'s'} added to the purchase list${own?`, ${own} covered by own stock`:''}${none?`, ${none} without a price`:''}.`)};
- const cartProps={askQuote:(seller,lines)=>askQuote(seller,lines),cart:s.cart,bids:s.bids,money,shipping:inbound,onClose:()=>setCartOpen(null),onQty:(id,qty)=>set(x=>({cart:x.cart.map(i=>i.id===id?{...i,qty,unit:cartUnit(i,qty)}:i)})),onRemove:id=>set(x=>({cart:x.cart.filter(i=>i.id!==id)})),onClear:()=>set({cart:[]}),
+ // Place order: the supplier's lines become a purchase order (Purchases page); when it is marked received
+ // there, the parts go into inventory. Ordered lines leave the purchase list.
+ const placeOrders=groups=>{let led=loadLedger();const made=[];
+  for(const g of groups){const r=placeOrder(led,{supplier:g.seller,project:s.project||s.from||'',listId:s.listId||null,shippingUsd:inbound.groups.find(x=>x.seller===g.seller)?.charge||0,
+   lines:g.items.map(i=>{const row=rows.find(x=>String(x.mpn).toUpperCase()===String(i.mpn).toUpperCase());return {mpn:i.mpn,qty:i.qty,unitUsd:i.unit,manufacturer:row?.manufacturer||'',description:row?.description||'',package:row?.package||''}})});
+   if(r.order){led=r.ledger;made.push(r.order)}}
+  if(!made.length)return;if(!saveLedger(led)){notify('Storage full: the order was not saved.');return}
+  const sellers=new Set(made.map(o=>o.supplier));set(x=>({cart:x.cart.filter(i=>!sellers.has(i.seller))}));
+  notify(`${made.map(o=>o.id).join(', ')} placed. Mark ${made.length===1?'it':'them'} received on the Purchases page when the parts arrive; they then go into inventory.`)};
+ const cartProps={onPlaceOrder:placeOrders,askQuote:(seller,lines)=>askQuote(seller,lines),cart:s.cart,bids:s.bids,money,shipping:inbound,onClose:()=>setCartOpen(null),onQty:(id,qty)=>set(x=>({cart:x.cart.map(i=>i.id===id?{...i,qty,unit:cartUnit(i,qty)}:i)})),onRemove:id=>set(x=>({cart:x.cart.filter(i=>i.id!==id)})),onClear:()=>set({cart:[]}),
   onBidStatus:(id,status)=>set(x=>({bids:x.bids.map(b=>b.id===id?{...b,status}:b)})),onBidRemove:id=>set(x=>({bids:x.bids.filter(b=>b.id!==id)}))};
  const saveBid=b=>{set(x=>({bids:[b,...x.bids]}));setBid(null);notify(`Bid for ${b.mpn} saved.`)};
 
@@ -323,7 +341,7 @@ export default function BomTool({parts=[],boards=[],activeBoardId,boardModel=[],
 
  // --- Demo tour: a priced demo BOM replaces the user's for the length of the tour, then theirs comes back.
  const [demo,setDemo]=useState(false);
- const startDemo=()=>{try{if(!s.demo)localStorage.setItem(BACKUP,JSON.stringify(s))}catch{}setDetail(null);setCartOpen(null);setQuote(false);setS({...DEFAULT,...demoBomState()});setStep(0);setDemo(true)};
+ const startDemo=()=>{try{if(!s.demo)localStorage.setItem(BACKUP,JSON.stringify(s))}catch{}setDetail(null);setCartOpen(null);setQuote(false);setS({...DEFAULT,...demoBomState()});setStep(1);setDemo(true)};
  const endDemo=()=>{setDemo(false);setDetail(null);setCartOpen(null);let own=null;try{own=localStorage.getItem(BACKUP);localStorage.removeItem(BACKUP);if(own)localStorage.setItem(STORE,own);else localStorage.removeItem(STORE)}catch{}
   setS(own?load():DEFAULT);setStep(0);notify('Demo finished. Your own BOM is back.')};
  useEffect(()=>{const ask=()=>{try{if(sessionStorage.getItem(BOM_DEMO)!=='1')return;sessionStorage.removeItem(BOM_DEMO)}catch{return}startDemo()};ask();addEventListener(BOM_DEMO,ask);return()=>removeEventListener(BOM_DEMO,ask)},[]);// eslint-disable-line react-hooks/exhaustive-deps
@@ -348,7 +366,7 @@ export default function BomTool({parts=[],boards=[],activeBoardId,boardModel=[],
   else notify(b.parts?.length?`${b.name} added to Board studio. Your BOM lines are kept; use Load from… in Components to replace them with the board's ${b.parts.length} components.`:`${b.name} added to Board studio. No components were found in the files, so upload the BOM in Components.`)}
   catch(e){notify(e.message||'The board could not be added to Board studio.')}};
  // --- Quotation outcome: save the list to come back to, or continue to production.
- const checks=[['Bare PCB',!pcbOn?'not needed':pcbUnit==null?'price not entered':'priced',pcbOn&&pcbUnit==null],
+ const checks=[['Bare PCB',pcbUnit==null?'price not entered (required)':'priced',pcbUnit==null],
   ['Components',empty?'no lines':totals.missing?`${totals.missing} line${totals.missing===1?'':'s'} without a price`:'priced',empty||totals.missing>0],
   ['Enclosure',!s.box.material?'not needed':customBox?'custom moulded':totals.enclosureUnpriced?'price not entered':'priced',!!s.box.material&&!customBox&&totals.enclosureUnpriced],
   ['Mould',!customBox?'not needed':totals.enclosureUnpriced?'tooling or unit price not entered':`${s.mould.maker||'maker not chosen'}`,customBox&&totals.enclosureUnpriced]];
@@ -366,8 +384,8 @@ export default function BomTool({parts=[],boards=[],activeBoardId,boardModel=[],
     <label>Boards<input type="number" min="1" step="1" value={s.boards} onChange={e=>set({boards:Math.max(1,Math.round(n0(e.target.value))||1)})}/></label></div>
    <div className="quote-outcome-actions">
     <button className="button" type="button" disabled={empty&&!pcbOn&&!s.box.material} onClick={()=>{const e=doSave('quoted');if(e)notify(`${e.name} saved (revision ${e.revision}). Open it again from Saved lists.`)}}><Bookmark size={15}/>{s.listId?'Save changes':'Save list'}</button>
-    <button className="button primary" type="button" disabled={empty||!s.customer.trim()||!onContinue} onClick={continueOrder}><Factory size={15}/>Continue to production <ArrowRight size={15}/></button></div>
-   <small>Continue saves the list as ordered and books a production job: incoming check, QA, kitting, storing, SMT, PCBA, THT, wave soldering, QA, assembly, testing and final product. {!s.customer.trim()&&'Enter the customer to continue.'}</small>
+    <button className="button primary" type="button" disabled={empty||pcbUnit==null||!s.customer.trim()||!onContinue} onClick={continueOrder}><Factory size={15}/>Continue to production <ArrowRight size={15}/></button></div>
+   <small>Continue saves the list as ordered and books a production job: incoming check, QA, kitting, storing, SMT, PCBA, THT, wave soldering, QA, assembly, testing and final product. {pcbUnit==null?'Enter the bare PCB price (step 1) to continue. ':''}{!s.customer.trim()&&'Enter the customer to continue.'}</small>
   </div></section>;
 
  const liveRegion=<div className="sr-only" role="status" aria-live="polite">{busy}</div>;
@@ -379,7 +397,14 @@ export default function BomTool({parts=[],boards=[],activeBoardId,boardModel=[],
   </nav>
   <p className="step-guide" role="note"><strong>Step {step+1} of {STEPS.length} · {STEPS[step]}.</strong> {GUIDE[step]}</p>
   {s.demo&&<div className="studio-note bom-demo-note" role="note"><PlayCircle size={15}/> Demo data: an illustrative BOM with demo prices. Your own BOM comes back when the demo ends.</div>}
-  {step===0&&<><section className="panel bom-sheet" aria-label="Components">
+  {step===1&&gerberBoard&&(show3d?<section className="panel bom-board-3d" aria-label="Board in 3D">
+   <div className="bom-board-3d-view"><Suspense fallback={<div className="board-placeholder">Loading 3D view…</div>}><Board compact board={gerberBoard} parts={gerberBoard.parts||[]} mode="3D" onSelect={p=>{const r=lineOf(p.ref);if(r)openDetail(r.id);else notify(`${p.ref} is not on a line of this BOM.`)}}/></Suspense></div>
+   <div className="bom-board-3d-info"><span className="eyebrow">From {gerberBoard.source||'the board files'}</span><strong>{gerberBoard.name}</strong>
+    <dl><div><dt>Size</dt><dd>{Math.round(gerberBoard.width)} × {Math.round(gerberBoard.height)} mm</dd></div>{gerberBoard.layers?<div><dt>Layers</dt><dd>{gerberBoard.layers}</dd></div>:null}<div><dt>Components</dt><dd>{(gerberBoard.parts||[]).length}</dd></div><div><dt>On BOM lines</dt><dd>{(gerberBoard.parts||[]).filter(p=>lineOf(p.ref)).length}</dd></div></dl>
+    <small className="muted">Drag to turn it. Hover a part to name it; click it to open its BOM line.</small>
+    <button type="button" className="text-button" onClick={()=>toggle3d(false)}>Hide the 3D view</button></div>
+  </section>:<button type="button" className="text-button bom-board-3d-show" onClick={()=>toggle3d(true)}><CircuitBoard size={14}/>Show {gerberBoard.name} in 3D</button>)}
+  {step===1&&<><section className="panel bom-sheet" aria-label="Components">
    {header}{tools}
    {ready===false&&<div className="studio-note"><TriangleAlert size={15}/> No distributor is connected, so prices cannot be fetched. Add DigiKey or Mouser keys as server secrets (Integrations).</div>}
    {busy&&<div className="bom-loading" aria-hidden="true">{busy}</div>}
@@ -439,12 +464,12 @@ export default function BomTool({parts=[],boards=[],activeBoardId,boardModel=[],
   {!empty&&<ComponentPlanning rows={rows} calcs={calcs} outlooks={outlooks} hikes={s.hikes} onHikes={(key,value)=>set(x=>({hikes:{...x.hikes,[key]:Math.max(0,Math.min(100,n0(value)))}}))} purchases={s.purchases} onPurchase={recordPurchase} money={money}/>}
   </>}
 
-  {step===1&&<section className="panel bom-extras" aria-label="Bare PCB setup">
-    <div className="panel-heading"><div className="title-row"><CircuitBoard size={17}/><h2>Bare PCB</h2></div><small className="muted">optional</small></div>
+  {step===0&&<section className="panel bom-extras" aria-label="Bare PCB setup">
+    <div className="panel-heading"><div className="title-row"><CircuitBoard size={17}/><h2>Bare PCB</h2></div><small className="muted">required</small></div>
     <div className="bom-pcb">
      <PcbGerber onFiles={sendGerber} info={s.pcb.gerber} spec={est.spec} layers={est.layers} material={mat.label} boardSource={gerberBoard} demoUrl={s.demo?DEMO_GERBER:null} onRead={readGerber} onClear={board=>set(x=>({pcb:{...x.pcb,gerber:null,gerberOff:board||x.pcb.gerberOff||null}}))}/>
      <label>Board material<select aria-label="Bare PCB material" value={s.pcb.material} onChange={e=>{const m=PCB_MATERIALS.find(x=>x.id===e.target.value);set(x=>({pcb:{...x.pcb,material:e.target.value,layers:m?(m.layers.find(l=>l>=x.pcb.layers)||m.layers[m.layers.length-1]):x.pcb.layers,unit:null}}))}}>
-      <option value="">No bare PCB</option>{PCB_MATERIALS.map(m=><option key={m.id} value={m.id}>{m.label}</option>)}</select></label>
+      {PCB_MATERIALS.map(m=><option key={m.id} value={m.id}>{m.label}</option>)}</select></label>
      {pcbOn&&<>
       <small className="muted">{mat.note}</small>
       <label>Board type and size<select aria-label="PCB board type" value={s.pcb.choice} onChange={e=>{const o=sizeOptions.find(x=>x.id===e.target.value);set(x=>({pcb:{...x.pcb,choice:e.target.value,...(o?{widthMm:o.widthMm,heightMm:o.heightMm,layers:mat.layers.find(l=>l>=o.layers)||mat.layers[mat.layers.length-1]}:{}),unit:null}}))}}>
@@ -481,13 +506,13 @@ export default function BomTool({parts=[],boards=[],activeBoardId,boardModel=[],
    <section className="panel bom-extras" aria-label="Shipping">
     <div className="panel-heading"><div className="title-row"><Truck size={17}/><h2>Shipping</h2></div><label className="auto-switch"><input type="checkbox" checked={s.shipping.free} onChange={e=>set(x=>({shipping:{...x.shipping,free:e.target.checked}}))}/><span/>Offer Free Shipping</label></div>
     <div className="bom-ship">
-     <h3 className="bom-sub">Supplier shipping <small className="muted">what suppliers charge us, once per supplier order</small></h3>
-     {inbound.groups.length?<div className="table-scroll"><table className="ship-table"><thead><tr><th>Supplier</th><th className="numeric">Order value</th><th className="numeric">Flat charge</th><th className="numeric">Free above</th><th className="numeric">Shipping</th></tr></thead><tbody>
-      {inbound.groups.map(g=>{const rule=s.supplierRules[g.seller]||{};const edit=k=>e=>set(x=>({supplierRules:{...x.supplierRules,[g.seller]:{...rule,[k]:typed(e.target.value)}}}));const shownV=shownAmt;
-       return <tr key={g.seller}><td>{g.seller}</td><td className="numeric">{money.fmt(g.subtotal)}</td><td className="numeric"><input className="bom-num" type="number" min="0" step="any" aria-label={`${g.seller} flat shipping charge`} value={shownV(rule.flat)} onChange={edit('flat')} placeholder="—"/></td><td className="numeric"><input className="bom-num" type="number" min="0" step="any" aria-label={`${g.seller} free shipping above`} value={shownV(rule.freeAbove)} onChange={edit('freeAbove')} placeholder="—"/></td>
+     <h3 className="bom-sub">Inbound shipping <small className="muted">what each purchase order is charged, once per order</small></h3>
+     {inbound.groups.length?<div className="table-scroll"><table className="ship-table"><thead><tr><th>Purchase order</th><th className="numeric">Order value</th><th className="numeric">Flat charge</th><th className="numeric">Free above</th><th className="numeric">Shipping</th></tr></thead><tbody>
+      {inbound.groups.map((g,gi)=>{const rule=s.supplierRules[g.seller]||{};const edit=k=>e=>set(x=>({supplierRules:{...x.supplierRules,[g.seller]:{...rule,[k]:typed(e.target.value)}}}));const shownV=shownAmt;
+       return <tr key={g.seller}><td>Order {gi+1}</td><td className="numeric">{money.fmt(g.subtotal)}</td><td className="numeric"><input className="bom-num" type="number" min="0" step="any" aria-label={`Order ${gi+1} flat shipping charge`} value={shownV(rule.flat)} onChange={edit('flat')} placeholder="—"/></td><td className="numeric"><input className="bom-num" type="number" min="0" step="any" aria-label={`Order ${gi+1} free shipping above`} value={shownV(rule.freeAbove)} onChange={edit('freeAbove')} placeholder="—"/></td>
         <td className="numeric">{g.charge==null?<em className="na">Not quoted</em>:money.fmt(g.charge)}<small className="muted">{g.basis}</small></td></tr>})}</tbody></table></div>
-     :<p className="muted bom-off">No supplier orders yet: every line is from own stock or unpriced.</p>}
-     {inbound.unquoted.length>0&&<p className="warn-text small-copy">Shipping not quoted for {inbound.unquoted.join(', ')}: enter their charge so it is counted.</p>}
+     :<p className="muted bom-off">No purchase orders yet: every line is from own stock or unpriced.</p>}
+     {inbound.unquoted.length>0&&<p className="warn-text small-copy">Shipping not entered for {inbound.unquoted.length} order{inbound.unquoted.length===1?'':'s'}: enter the charge so it is counted.</p>}
      <h3 className="bom-sub">Delivery to the customer</h3>
      <div className="bom-pcb-dims"><label>Our cost ({money.currency})<input type="number" min="0" step="1" aria-label="Delivery cost to the customer" placeholder="0" value={shownAmt(s.shipping.deliveryCost)} onChange={e=>set(x=>({shipping:{...x.shipping,deliveryCost:typed(e.target.value)}}))}/></label>
       <label>Method<input aria-label="Delivery method" value={s.shipping.note} placeholder="Courier, door delivery" onChange={e=>set(x=>({shipping:{...x.shipping,note:e.target.value.slice(0,80)}}))}/></label>
@@ -512,11 +537,11 @@ export default function BomTool({parts=[],boards=[],activeBoardId,boardModel=[],
      <div className="profit"><dt>Net profit</dt><dd className={totals.netProfit>=0?'ok-text':'warn-text'}>{money.fmt(totals.netProfit)}<small>{totals.customerTotal?Math.round(totals.netProfit/totals.customerTotal*1000)/10+'% of customer total':''}</small></dd></div>
     </dl>
     <p className="formula muted">Net profit deducts component, PCB, enclosure, tooling and actual shipping costs.</p>
-    {(totals.missing>0||totals.short>0||inbound.unquoted.length>0||totals.pcbUnpriced||totals.enclosureUnpriced)&&<div className="studio-note warn"><TriangleAlert size={15}/> {totals.missing?`${totals.missing} line${totals.missing===1?' has':'s have'} no price and ${totals.missing===1?'is':'are'} left out of the totals. `:''}{totals.short?`${totals.short} short of stock. `:''}{inbound.unquoted.length?`Shipping not quoted for ${inbound.unquoted.join(', ')}. `:''}{totals.pcbUnpriced?'Bare PCB price not entered. ':''}{totals.enclosureUnpriced?'Enclosure price not entered.':''}</div>}
+    {(totals.missing>0||totals.short>0||inbound.unquoted.length>0||totals.pcbUnpriced||totals.enclosureUnpriced)&&<div className="studio-note warn"><TriangleAlert size={15}/> {totals.missing?`${totals.missing} line${totals.missing===1?' has':'s have'} no price and ${totals.missing===1?'is':'are'} left out of the totals. `:''}{totals.short?`${totals.short} short of stock. `:''}{inbound.unquoted.length?`Shipping not entered for ${inbound.unquoted.length} order${inbound.unquoted.length===1?'':'s'}. `:''}{totals.pcbUnpriced?'Bare PCB price not entered. ':''}{totals.enclosureUnpriced?'Enclosure price not entered.':''}</div>}
     {ranges.length>0&&<div className="bom-scenarios"><h3>Customer pricing outlook</h3><p className="muted">Planning ranges for the priced scope. PCB, enclosure and freight stay at their entered rates.</p>
      {ranges.map(r=><div key={r.days}><span>In {r.days} days</span><strong>{money.fmt(r.low)} – {money.fmt(r.high)}</strong></div>)}</div>}
-    <h3 className="bom-sub">Where to buy</h3>
-    <ol className="bom-plan">{plan.map(g=><li key={g.key} className={g.key==='none'?'warn-text':''}><span><strong>{g.label}</strong><small>{g.lines.length} line{g.lines.length===1?'':'s'} · {fmtInt(g.lines.reduce((a,l)=>a+l.qty,0))} pcs</small></span><b>{g.key==='none'?'—':money.fmt(g.cost)}</b></li>)}</ol>
+    <h3 className="bom-sub">Sourcing</h3>
+    <ol className="bom-plan">{plan.map((g,gi)=><li key={g.key} className={g.key==='none'?'warn-text':''}><span><strong>{g.key.startsWith('s:')?`Purchase order ${plan.slice(0,gi+1).filter(x=>x.key.startsWith('s:')).length}`:g.label}</strong><small>{g.lines.length} line{g.lines.length===1?'':'s'} · {fmtInt(g.lines.reduce((a,l)=>a+l.qty,0))} pcs</small></span><b>{g.key==='none'?'—':money.fmt(g.cost)}</b></li>)}</ol>
     <button className="button primary full" data-tour="bom-quote" disabled={empty&&!pcbOn&&!s.box.material} onClick={()=>setQuote(true)}><FileDown size={15}/>Quotation PDF</button>
    </section>
   </div>
@@ -580,7 +605,7 @@ function QuoteDialog({s,rows,totals,ranges,boxDims,mat,layers,money,notify,shipp
    {totals.missing>0&&<div className="studio-note warn"><TriangleAlert size={15}/> {totals.missing} line{totals.missing===1?' is':'s are'} pending and excluded from the quotation total.</div>}
    {totals.pcbUnpriced&&<div className="studio-note warn"><TriangleAlert size={15}/> The bare PCB has no price yet and will print "Price on request".</div>}
    {totals.enclosureUnpriced&&<div className="studio-note warn"><TriangleAlert size={15}/> The enclosure has no price yet and will print "Price on request".</div>}
-   {shippingTbc&&<div className="studio-note warn"><TriangleAlert size={15}/> Shipping is not known yet{unquoted.length?` (no charge set for ${unquoted.join(', ')})`:''} and will print "To be confirmed".</div>}
+   {shippingTbc&&<div className="studio-note warn"><TriangleAlert size={15}/> Shipping is not known yet{unquoted.length?` (no charge set for ${unquoted.length} order${unquoted.length===1?'':'s'})`:''} and will print "To be confirmed".</div>}
    <button className="button primary full" type="submit" disabled={busy}><FileDown size={15}/>{busy?'Making the PDF…':'Download PDF'}</button>
   </form>
  </Dialog>;

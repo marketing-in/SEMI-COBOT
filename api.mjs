@@ -486,17 +486,38 @@ async function handleAuth(request,url,env,auth){
  return json({error:'Not found.'},404);
 }
 
-export async function handleApi(request,env={},fetcher=fetch,store=null,auth=null){
+// Shared inventory in Supabase. Without a database this answers {enabled:false} and the browser keeps
+// its own copy. POST {parts:[changes], ledger:{orders, removed, moves, consumed}} applies one browser's
+// changes, then both methods answer with the whole shared state.
+async function handleInventory(request,env,auth,inventory){
+ if(!inventory)return json({enabled:false});
+ try{
+  if(request.method==='POST'){let body;try{body=await request.json()}catch{return json({error:'Send the changes as JSON.'},400)}
+   const who=(await sessionUser(request,env,auth))?.email||'local';await inventory.apply(body,who)}
+  return json(await inventory.pull())}
+ catch(e){return json({error:e.code?e.message:'The shared inventory could not be reached. Changes stay on this device and are sent again later.',code:e.code||'down'},503)}}
+
+// Part master catalogue from Supabase (table part_master). {enabled:false} without a database and
+// {enabled:true, empty:true} before it is loaded; the browser then uses the bundled file.
+async function handlePartMaster(inventory){
+ if(!inventory?.catalogue)return json({enabled:false});
+ try{const c=await inventory.catalogue();return json(c?{enabled:true,from:'supabase',...c}:{enabled:true,empty:true})}
+ catch(e){return json({error:e.code?e.message:'The part master could not be read from the database.',code:e.code||'down'},503)}}
+
+export async function handleApi(request,env={},fetcher=fetch,store=null,auth=null,inventory=null){
  const url=new URL(request.url);if(!url.pathname.startsWith('/api/'))return null;
  // The vision upload is the only POST route; everything else stays GET-only.
  const POSTS=['/api/vision','/api/identify','/api/auth/signup','/api/auth/login','/api/auth/logout','/api/auth/remove'];
- if(request.method!==(POSTS.includes(url.pathname)?'POST':'GET'))return json({error:'Method not allowed.'},405);
+ // The shared inventory reads with GET and sends changes with POST.
+ if(url.pathname==='/api/inventory'?!['GET','POST'].includes(request.method):request.method!==(POSTS.includes(url.pathname)?'POST':'GET'))return json({error:'Method not allowed.'},405);
  if(request.headers.get('Sec-Fetch-Site')==='cross-site')return json({error:'Cross-site requests are not allowed.'},403);
  if(url.pathname.startsWith('/api/auth/'))return handleAuth(request,url,env,auth);
  // Once an admin exists, every other route except the status check needs a signed-in session.
  // A host with REQUIRE_SIGNIN (online) keeps every route closed until someone signs in, admin or not.
  if(auth&&url.pathname!=='/api/status'){const state=await auth.load();if((usersOf(state).length||env.REQUIRE_SIGNIN)&&!(await sessionUser(request,env,auth)))return json({error:'Sign in to use the workspace.'},401)}
  if(url.pathname==='/api/status')return json(configured(env));
+ if(url.pathname==='/api/inventory')return handleInventory(request,env,auth,inventory);
+ if(url.pathname==='/api/partmaster')return handlePartMaster(inventory);
  if(url.pathname==='/api/vision')return handleVision(request,env,fetcher);
  if(url.pathname==='/api/identify')return handleIdentify(request,env,fetcher);
  if(url.pathname==='/api/partinfo')return handlePartInfo(url,env,fetcher,store);

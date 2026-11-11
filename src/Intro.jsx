@@ -31,7 +31,7 @@ const ART={
 };
 const FEATURES=[
  ['studio','Board studio','Gerber, KiCad, pick-and-place or a PDF becomes a 3D board.'],
- ['parts','Every part known','Part master, Gemini and Google look-ups, saved locally.'],
+ ['parts','Every part known','Part master, your project files and Google look-ups, saved locally.'],
  ['market','Six markets at once','DigiKey, Mouser, Nexar, TME, Master, Google Shopping.'],
  ['line','Full SMT line','Loader to X-ray, with each machine’s cycle inside.'],
  ['inspect','Inspection','Paste volumes, AOI checks, X-ray voids.'],

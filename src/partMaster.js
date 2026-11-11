@@ -7,6 +7,12 @@
 // resistors, by value and size when the label is just "10k" or "4K7 0603".
 
 export const PART_MASTER_URL='/data/part-master.json';
+// The catalogue from Supabase (part_master, through /api/partmaster) when it has been loaded there,
+// else the bundled file. Returns {json, from:'supabase'|'bundled'}.
+export async function loadPartMaster(fetcher=(...a)=>fetch(...a)){
+ try{const r=await fetcher('/api/partmaster');if(r.ok){const j=await r.json();if(j?.enabled&&Array.isArray(j.semiconductors)&&Array.isArray(j.resistors))return {json:j,from:'supabase'}}}catch{}
+ const r=await fetcher(PART_MASTER_URL);if(!r.ok)throw new Error('HTTP '+r.status);return {json:await r.json(),from:'bundled'};
+}
 export const SEMI_FIELDS=['category','subType','mpn','manufacturer','description','specs','package','mount','use','alternates'];
 export const RES_FIELDS=['type','size','value','ohms','tolerance','power','maxV','tcr','mpn','manufacturer','crossRef','packaging'];
 export const KNOWLEDGE_CATEGORIES=['Diodes','Optoelectronics','Transistors','Power management','Amplifiers','Analog ICs','Interface ICs','Timers & logic','Memory','Microcontrollers','Modules','Programmable logic','Resistors','Circuit protection'];

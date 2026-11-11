@@ -8,7 +8,10 @@ export const DETAILS_KEY='semicobot-part-details-v1';
 export const keyOf=mpn=>String(mpn||'').toUpperCase().replace(/[^A-Z0-9]/g,'');
 
 export function loadDetails(storage){try{const v=JSON.parse(storage?.getItem(DETAILS_KEY)||'{}');return v&&typeof v==='object'&&!Array.isArray(v)?v:{}}catch{return {}}}
-export function saveDetails(storage,map){try{storage?.setItem(DETAILS_KEY,JSON.stringify(map));return true}catch{return false}}
+// Each save is announced (DETAILS_SAVED) so the shared part master can send it; DETAILS_UPDATED tells the
+// open pages that details from other people arrived.
+export const DETAILS_SAVED='semicobot-details-saved',DETAILS_UPDATED='semicobot-details-updated';
+export function saveDetails(storage,map){try{storage?.setItem(DETAILS_KEY,JSON.stringify(map));if(typeof window!=='undefined'&&typeof window.dispatchEvent==='function')window.dispatchEvent(new Event(DETAILS_SAVED));return true}catch{return false}}
 
 // Details the part master already knows (no network).
 export function fromKnowledge(e){

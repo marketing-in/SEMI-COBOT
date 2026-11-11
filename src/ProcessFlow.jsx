@@ -1,7 +1,8 @@
 import React,{useMemo} from 'react';
-import {Boxes,BookMarked,Calculator,Bookmark,PackageCheck,Factory,Wrench,FlaskConical,Truck,Store,ChevronRight} from 'lucide-react';
+import {Wallet,Boxes,BookMarked,Calculator,Bookmark,PackageCheck,Factory,Wrench,FlaskConical,Truck,Store,ChevronRight} from 'lucide-react';
 import {STAGE_GROUPS,stageInfo,flowSummary} from './production.js';
 import {loadLists} from './savedLists.js';
+import {loadLedger} from './ledger.js';
 import {vendorsOf} from './vendors.js';
 
 const ICONS={Material:PackageCheck,'Factory line':Factory,Assembly:Wrench,Testing:FlaskConical,'Final product':Truck};
@@ -13,6 +14,7 @@ const fmt=n=>Number(n||0).toLocaleString('en-IN');
 export default function ProcessFlow({partCount=0,stockCount=0,bomLines=0,jobs=[],onNavigate=()=>{}}){
  const lists=useMemo(loadLists,[]);
  const vendors=useMemo(()=>vendorsOf(null).length,[]);
+ const orders=useMemo(()=>loadLedger().orders,[]);
  const at=useMemo(()=>{const c=Object.fromEntries(STAGE_GROUPS.map(g=>[g,0]));for(const j of jobs){if(j.finished)continue;const info=stageInfo(j);const st=info.stages[info.current];if(st)c[st.group]++}return c},[jobs]);
  const flow=flowSummary(jobs);
  const steps=[
@@ -20,6 +22,7 @@ export default function ProcessFlow({partCount=0,stockCount=0,bomLines=0,jobs=[]
   {key:'Internal stock',icon:Boxes,value:fmt(stockCount),note:'parts in own stock, used first',page:'Inventory'},
   {key:'BOM tool',icon:Calculator,value:fmt(bomLines),note:'lines in the open BOM',page:'BOM tool'},
   {key:'Saved lists',icon:Bookmark,value:fmt(lists.length),note:`${lists.filter(l=>l.status==='quoted').length} quoted · ${lists.filter(l=>l.status==='ordered').length} ordered`,page:'Saved lists'},
+  {key:'Purchases',icon:Wallet,value:fmt(orders.filter(o=>o.status==='ordered').length),note:`orders to receive · ${fmt(orders.length)} in all`,page:'Purchases'},
   ...STAGE_GROUPS.map(g=>({key:g,icon:ICONS[g],value:fmt(at[g]),note:g==='Final product'?`${fmt(flow.ready)} ready · ${fmt(flow.dispatched)} dispatched`:`job${at[g]===1?'':'s'} here`,page:g==='Final product'?'Inventory':'Production'}))];
  return <section className="panel process-flow" aria-label="Product flow">
   <div className="panel-heading"><div className="title-row"><h2>From part to final product</h2></div><button className="text-button" onClick={()=>onNavigate('Vendors')}><Store size={14}/>{fmt(vendors)} vendors</button></div>

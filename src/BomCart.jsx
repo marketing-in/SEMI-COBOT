@@ -1,5 +1,5 @@
 import React,{useEffect,useId,useRef,useState} from 'react';
-import {X,Download,Trash2,Mail,ClipboardList,Gavel} from 'lucide-react';
+import {X,Download,Trash2,Mail,ClipboardList,Gavel,Truck} from 'lucide-react';
 import {cartGroups,cartCsv} from './bom.js';
 import {contactLink} from './BomOverview.jsx';
 
@@ -14,7 +14,7 @@ function QtyInput({label,value,onCommit}){const [t,setT]=useState(String(value))
  return <input className="bom-num" type="number" min="1" aria-label={label} value={t} onChange={e=>{setT(e.target.value);commit(e.target.value)}} onBlur={()=>{if(!(Math.round(+t)>=1))setT(String(value))}}/>}
 const host=u=>{try{return new URL(u).origin}catch{return null}};
 
-export default function BomCart({cart,bids,money,shipping,onQty,onRemove,onClear,onBidStatus,onBidRemove,onClose,startTab='cart',askQuote=null}){
+export default function BomCart({cart,bids,money,shipping,onQty,onRemove,onClear,onBidStatus,onBidRemove,onClose,startTab='cart',askQuote=null,onPlaceOrder=null}){
  const [ref,id]=useDialog();const [tab,setTab]=useState(startTab);const groups=cartGroups(cart);
  const download=g=>{const blob=new Blob([cartCsv(g.items)],{type:'text/csv'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=`purchase-list-${g.seller.replace(/[^\w-]+/g,'-')}.csv`;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),3000)};
  return <dialog ref={ref} className="wide" aria-labelledby={id} onCancel={onClose} onClick={e=>{const r=ref.current.getBoundingClientRect();if(e.target===ref.current&&(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom))onClose()}}>
@@ -26,12 +26,12 @@ export default function BomCart({cart,bids,money,shipping,onQty,onRemove,onClear
    groups.map(g=>{const sh=shipping.groups.find(x=>x.seller===g.seller);const site=host(g.items.find(i=>i.url)?.url);
     return <section key={g.seller} className="cart-group" aria-label={`${g.seller} list`}>
      <div className="cart-head"><h3>{g.seller}</h3><span className="muted">{g.items.length} line{g.items.length===1?'':'s'} · {money.fmt(g.subtotal)}{sh?` · shipping ${sh.charge==null?'not quoted':money.fmt(sh.charge)}`:''}</span>
-      <span className="cart-actions">{askQuote&&(()=>{const m=askQuote(g.seller,g.items.map(i=>({mpn:i.mpn,qty:i.qty,refs:i.ref?String(i.ref).split(/\s+/):[]})));return <a className="button small primary" href={m.href} title={m.to?`To ${m.to}`:`Add ${g.seller}'s quote email on the Vendors page to fill in the To field`}><Mail size={14}/>Ask quote</a>})()}<button className="button small" onClick={()=>download(g)}><Download size={14}/>CSV</button>{site&&<a className="button small" href={site} target="_blank" rel="noreferrer noopener">Open {g.seller}</a>}</span></div>
+      <span className="cart-actions">{onPlaceOrder&&<button className="button small primary" onClick={()=>onPlaceOrder([g])}><Truck size={14}/>Place order</button>}{askQuote&&(()=>{const m=askQuote(g.seller,g.items.map(i=>({mpn:i.mpn,qty:i.qty,refs:i.ref?String(i.ref).split(/\s+/):[]})));return <a className="button small" href={m.href} title={m.to?`To ${m.to}`:`Add ${g.seller}'s quote email on the Vendors page to fill in the To field`}><Mail size={14}/>Ask quote</a>})()}<button className="button small" onClick={()=>download(g)}><Download size={14}/>CSV</button>{site&&<a className="button small" href={site} target="_blank" rel="noreferrer noopener">Open {g.seller}</a>}</span></div>
      <div className="table-scroll"><table className="cart-table"><thead><tr><th>Part</th><th className="numeric">Quantity</th><th className="numeric">Unit</th><th className="numeric">Line</th><th aria-label="Remove"/></tr></thead><tbody>
       {g.items.map(i=><tr key={i.id}><td><strong>{i.mpn}</strong>{i.ref&&<small className="muted"> {i.ref}</small>}</td><td className="numeric"><QtyInput label={`${i.mpn} quantity from ${g.seller}`} value={i.qty} onCommit={v=>onQty(i.id,v)}/></td>
        <td className="numeric">{money.fmt(i.unit,{unit:true})}</td><td className="numeric">{money.fmt(i.qty*i.unit)}</td><td><button className="icon-button" aria-label={`Remove ${i.mpn} from the purchase list`} onClick={()=>onRemove(i.id)}><Trash2 size={14}/></button></td></tr>)}</tbody></table></div>
     </section>})}
-   {groups.length>0&&<div className="cart-foot"><strong>{money.fmt(groups.reduce((a,g)=>a+g.subtotal,0))}</strong><span className="muted">before supplier shipping</span><button className="text-button" onClick={onClear}>Clear the list</button></div>}
+   {groups.length>0&&<div className="cart-foot"><strong>{money.fmt(groups.reduce((a,g)=>a+g.subtotal,0))}</strong><span className="muted">before supplier shipping</span>{onPlaceOrder&&<button className="button small" onClick={()=>onPlaceOrder(groups)}><Truck size={14}/>Place all orders</button>}<button className="text-button" onClick={onClear}>Clear the list</button></div>}
   </>:<>
    {bids.length===0?<div className="empty"><Gavel/><h3>No bids yet</h3><p>Use Bid on an excess or broker offer.</p></div>:
    <div className="table-scroll"><table className="cart-table"><thead><tr><th>Part</th><th>Seller</th><th className="numeric">Quantity</th><th className="numeric">Target price</th><th>Status</th><th aria-label="Actions"/></tr></thead><tbody>

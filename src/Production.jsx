@@ -1,6 +1,7 @@
 import React,{useEffect,useMemo,useState} from 'react';
-import {Factory,Timer,Gauge,CalendarCheck,CheckCircle2,CircleDashed,Wrench,ArrowRight,ClipboardCheck,History,Calculator,Check} from 'lucide-react';
-import {AREAS,LINE_STATIONS,areaOf,modelOf,estimateJob,floorSummary,lastJob,jobDays,completedJobs,activeJobs,formatDate,bookJob,finishJob,setMachineStatus,todayIso,addDays,STATUSES,completeStage,autoAdvance,stageInfo,STAGE_GROUPS,reworkStage} from './production.js';
+import {Factory,Timer,Gauge,CalendarCheck,CheckCircle2,CircleDashed,Wrench,ArrowRight,ClipboardCheck,History,Calculator,Check,Settings2} from 'lucide-react';
+import FactorySetup from './FactorySetup.jsx';
+import {AREAS,LINE_STATIONS,stationsOf,areaOf,modelOf,estimateJob,floorSummary,lastJob,jobDays,completedJobs,activeJobs,formatDate,bookJob,finishJob,setMachineStatus,todayIso,addDays,STATUSES,completeStage,autoAdvance,stageInfo,STAGE_GROUPS,reworkStage} from './production.js';
 
 const fmt=n=>Number(n).toLocaleString('en-US');
 const TONE={Likely:'green',Possible:'green',Tight:'amber','Not by that date':'red','Not feasible':'red','Not enough data':'neutral'};
@@ -10,18 +11,19 @@ const STATUS_ICON={running:CircleDashed,idle:CheckCircle2,maintenance:Wrench};
 // rendering, false without WebGL.
 function useMachinePicture(model,status){
  const [pic,setPic]=useState(null);
- useEffect(()=>{let live=true;setPic(null);const t=setTimeout(()=>import('./machineView.js').then(v=>{if(live)setPic(v.machinePicture(model,status)||false)}).catch(()=>{if(live)setPic(false)}),20);return()=>{live=false;clearTimeout(t)}},[model,status]);
+ useEffect(()=>{if(!model){setPic(false);return}let live=true;setPic(null);const t=setTimeout(()=>import('./machineView.js').then(v=>{if(live)setPic(v.machinePicture(model,status)||false)}).catch(()=>{if(live)setPic(false)}),20);return()=>{live=false;clearTimeout(t)}},[model,status]);
  return pic;
 }
 function MachineCard({m,job,setState}){
- const model=modelOf(m),line=model==='smt',pic=useMachinePicture(model,m.status),Icon=STATUS_ICON[m.status];
- const figure=pic!==false&&<figure className="machine-figure">{pic?<img src={pic.src} alt={`${m.name}, 3D model`} draggable="false"/>:<div className="machine-figure-wait" aria-hidden="true"/>}</figure>;
+ const stations=stationsOf(m),standard=stations.length===LINE_STATIONS.length&&stations.every((x,i)=>x===LINE_STATIONS[i]);
+ const kind=modelOf(m),line=kind==='smt',model=line&&!standard?null:kind,pic=useMachinePicture(model,m.status),aligned=pic&&line&&standard,Icon=STATUS_ICON[m.status];
+ const figure=model&&pic!==false&&<figure className="machine-figure">{pic?<img src={pic.src} alt={`${m.name}, 3D model`} draggable="false"/>:<div className="machine-figure-wait" aria-hidden="true"/>}</figure>;
  return <li className={'machine-card '+(line?'line ':'')+m.status}>
   {!line&&figure}
   <div className="machine-card-head"><span className="machine-icon"><Icon size={15}/></span><span className="machine-copy"><strong>{m.name}</strong><small>{line?(job?job.board:'No job'):m.kind+(job?` · ${job.board}`:'')}</small></span>
    <select aria-label={`${m.name} status`} value={m.status} onChange={e=>setState(s=>setMachineStatus(s,m.id,e.target.value))}>{STATUSES.map(s=><option key={s} value={s}>{s[0].toUpperCase()+s.slice(1)}</option>)}</select></div>
   {line&&figure}
-  {line&&<ol className={'machine-stations'+(pic?' aligned':'')} aria-label={`${m.name} stations`}>{LINE_STATIONS.map((st,i)=><li key={st} style={pic?{left:`${pic.marks[i].x*100}%`}:undefined}>{st}</li>)}</ol>}
+  {line&&<ol className={'machine-stations'+(aligned?' aligned':'')+(standard?'':' custom')} aria-label={`${m.name} stations`}>{stations.map((st,i)=><li key={st} style={aligned?{left:`${pic.marks[i].x*100}%`}:undefined}>{st}</li>)}</ol>}
  </li>;
 }
 
@@ -54,7 +56,7 @@ function ReworkForm({job,stage,onRework}){
 export function Production({state,setState,boardModel=[],board,notify,onOpenList=null}){
  const today=todayIso();
  const [req,setReq]=useState(()=>({customer:'',board:'',qty:'500',components:String(lastJob(state.jobs)?.components||boardModel.length||100),due:addDays(today,21)}));
- const auto=state.auto!==false;
+ const auto=state.auto!==false;const [setup,setSetup]=useState(false);
  // Auto-calculator: on open and every minute, stages whose planned time has passed complete, finished
  // jobs free their lines, queued jobs start, and estimates update from the new history.
  useEffect(()=>{if(!auto)return;const tick=()=>setState(s=>{const next=autoAdvance(s,todayIso());return JSON.stringify(next.jobs)===JSON.stringify(s.jobs)&&JSON.stringify(next.machines)===JSON.stringify(s.machines)?s:next});tick();const t=setInterval(tick,60000);return()=>clearInterval(t)},[auto,setState]);
@@ -72,9 +74,12 @@ export function Production({state,setState,boardModel=[],board,notify,onOpenList
    <div className="stat"><div className="stat-top"><span>Jobs in progress</span><CalendarCheck size={18}/></div><div className="stat-value">{active.length}</div><div className="stat-note">{active[0]?`${active[0].board} · expected ${formatDate(active[0].expected)}`:'Floor is clear'}</div></div>
   </div>
   <section className="panel floor-panel" aria-label="Machines">
-   <div className="panel-heading"><div className="title-row"><Factory size={18}/><h2>Machines</h2></div></div>
+   <div className="panel-heading"><div className="title-row"><Factory size={18}/><h2>{setup?'Set up the factory':'Machines'}</h2>{!setup&&<span className="count-label">{state.machines.length}</span>}</div>{!setup&&<button className="button small" onClick={()=>setSetup(true)}><Settings2 size={14}/>Set up the factory</button>}</div>
+   {setup?<FactorySetup state={state} setState={setState} notify={notify} onDone={()=>setSetup(false)}/>:<>
+   {!state.floorSet&&<div className="studio-note setup-hint"><Settings2 size={15}/><span>This is a typical floor: two SMT lines, wave and selective solder, two test stations. Set it up to match your factory: create your lines, add your machines.</span><button className="button small primary" onClick={()=>setSetup(true)}>Set up the factory</button></div>}
+   {state.machines.length===0&&<div className="empty"><Factory/><h3>No machines yet</h3><p>Create your lines and add your machines; estimates and bookings use them.</p><button className="button primary" onClick={()=>setSetup(true)}>Set up the factory</button></div>}
    <div className="floor-body">{AREAS.map(([area,title])=>{const list=state.machines.filter(m=>areaOf(m.kind)===area);return list.length>0&&<div key={area} className={'floor-area '+area}><h3 className="machine-area-title">{title}</h3>
-    <ul className="machine-cards">{list.map(m=><MachineCard key={m.id} m={m} job={m.job&&state.jobs.find(j=>j.id===m.job)} setState={setState}/>)}</ul></div>})}</div>
+    <ul className="machine-cards">{list.map(m=><MachineCard key={m.id} m={m} job={m.job&&state.jobs.find(j=>j.id===m.job)} setState={setState}/>)}</ul></div>})}</div></>}
   </section>
   <div className="prod-layout">
    <section className="panel quote-panel" aria-label="New request">

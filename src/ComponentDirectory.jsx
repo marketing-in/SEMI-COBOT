@@ -1,6 +1,6 @@
 import React,{useEffect,useMemo,useRef,useState} from 'react';
 import {Search,Download,Upload,ChevronRight,ChevronDown,Plus,FileText,FileSpreadsheet} from 'lucide-react';
-import {keyOf,loadDetails,saveDetails,fromKnowledge,lookupDetails,exportJson,importJson,buildWorkbook,readWorkbook} from './partDetails.js';
+import {keyOf,loadDetails,saveDetails,DETAILS_UPDATED,fromKnowledge,lookupDetails,exportJson,importJson,buildWorkbook,readWorkbook} from './partDetails.js';
 import {classify,catalogueNodes,TAXONOMY_URL} from './componentTaxonomy.js';
 import {knowledgeType} from './partMaster.js';
 import {PartKnowledge} from './PartKnowledge.jsx';
@@ -21,6 +21,8 @@ const fromInventory=p=>p?{mpn:p.mpn,manufacturer:p.manufacturer&&p.manufacturer!
 
 export default function ComponentDirectory({boards=[],activeBoardId,boardModel=[],parts=[],knowledge,onOpenInventory,onAdd,notify,serpReady}){
  const [saved,setSaved]=useState(()=>loadDetails(storage()));
+ // Details other people saved arrive with the shared part master.
+ useEffect(()=>{const reload=()=>setSaved(loadDetails(storage()));window.addEventListener(DETAILS_UPDATED,reload);return ()=>window.removeEventListener(DETAILS_UPDATED,reload)},[]);
  const [query,setQuery]=useState(''),[busy,setBusy]=useState(()=>new Set()),[open,setOpen]=useState(null),[source,setSource]=useState('all'),[limit,setLimit]=useState(PAGE);
  const fileRef=useRef(null),xlsRef=useRef(null);
  const [tax,setTax]=useState(null),[sel,setSel]=useState(null),[expanded,setExpanded]=useState(null);
@@ -92,7 +94,7 @@ export default function ComponentDirectory({boards=[],activeBoardId,boardModel=[
   <small className="muted">{[...r.sources].map(s=>LABEL[s]).join(' · ')}{d?.fetchedAt?` · ${new Date(d.fetchedAt).toLocaleDateString()}`:''}</small></div>;
 
  return <section className="panel directory-panel" aria-label="Component databank">
-  <div className="panel-heading"><div className="title-row"><h2>Component databank</h2><span className="count-label">{fmt(classed.length)} parts</span></div>
+  <div className="panel-heading"><div className="title-row"><h2>Component databank</h2><span className="count-label">{fmt(classed.length)} parts</span>{knowledge?.from&&<small className="muted" title={knowledge.from==='supabase'?'The reference catalogue is read from the part_master table in Supabase.':'The reference catalogue bundled with the app. Load it into Supabase with scripts/push-part-master.mjs.'}>{knowledge.from==='supabase'?'Catalogue: Supabase':'Catalogue: bundled file'}</small>}</div>
    <div className="panel-actions">{serpReady&&missing.length>0&&<button type="button" className="text-button" onClick={lookupMissing} disabled={busy.size>0}><Search size={14}/>Look up {missing.length} missing</button>}
     <button type="button" className="text-button" onClick={downloadExcel}><FileSpreadsheet size={14}/>Export Excel</button>
     <button type="button" className="text-button" onClick={()=>xlsRef.current?.click()}><Upload size={14}/>Import Excel</button><input ref={xlsRef} type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden aria-label="Import part details Excel" onChange={e=>{uploadExcel(e.target.files?.[0]);e.target.value=''}}/>

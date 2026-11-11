@@ -4,9 +4,9 @@
 
 // The floor in process order: each SMT line is one unit with its own stations (loader to X-ray),
 // then the through-hole area, then test.
-export const MACHINE_KINDS=['SMT line','Wave solder','Selective solder','ICT / test'];
+export const MACHINE_KINDS=['SMT line','Wave solder','Selective solder','ICT / test','Burn-in','Conformal coating','Depaneling','Assembly bench','Other'];
 export const LINE_STATIONS=['Loader','Printer','SPI','Pick & place','Reflow','AOI','X-ray'];
-export const AREAS=[['SMT','SMT lines',['SMT line']],['THT','Through-hole',['Wave solder','Selective solder']],['Test','Test',['ICT / test']]];
+export const AREAS=[['SMT','SMT lines',['SMT line']],['THT','Through-hole',['Wave solder','Selective solder']],['Test','Test',['ICT / test','Burn-in']],['Other','Other equipment',['Conformal coating','Depaneling','Assembly bench','Other']]];
 export const STATUSES=['running','idle','maintenance'];
 const DAY=86400000;
 
@@ -46,10 +46,41 @@ export function migrateProduction(saved,today=todayIso()){
  const machines=seedProduction(today).machines.map(m=>{const o=old.get(m.id);return o?{...m,status:o.status,job:o.job}:m});
  return {...saved,machines,version:2};
 }
-export const areaOf=kind=>(AREAS.find(a=>a[2].includes(kind))||AREAS[0])[0];
+export const areaOf=kind=>(AREAS.find(a=>a[2].includes(kind))||AREAS[3])[0];
 // Which 3D model shows a machine: the whole line for an SMT line, else the machine's own form. Test
 // stations are a bed-of-nails ICT press unless the name says flying probe.
-export const modelOf=m=>m.kind==='SMT line'?'smt':m.kind==='Wave solder'?'wave':m.kind==='Selective solder'?'selective':/flying|probe/i.test(m.name||'')?'probe':'ict';
+export const modelOf=m=>m.kind==='SMT line'?'smt':m.kind==='Wave solder'?'wave':m.kind==='Selective solder'?'selective':m.kind==='ICT / test'?(/flying|probe/i.test(m.name||'')?'probe':'ict'):null;
+
+// --- Factory setup ----------------------------------------------------------------------------------
+// Every factory is different: the user builds their own floor. A line is an SMT line with the stations
+// it really has (in order); other machines are single units of a kind. The floor starts as a typical
+// one (two lines, wave, selective, two test stations) until the user sets it up (floorSet).
+export const stationsOf=m=>Array.isArray(m.stations)&&m.stations.length?m.stations:LINE_STATIONS;
+const cleanText=(v,max)=>String(v??'').replace(/\s+/g,' ').trim().slice(0,max);
+const cleanStations=list=>{const out=(Array.isArray(list)?list:[]).map(x=>cleanText(x,30)).filter(Boolean).slice(0,16);return out.length?out:[...LINE_STATIONS]};
+const machineId=p=>p+'-'+Math.random().toString(36).slice(2,8);
+const nextName=(machines,base)=>{const used=new Set(machines.map(m=>m.name.toLowerCase()));let n=1;while(used.has(`${base} ${n}`.toLowerCase()))n++;return `${base} ${n}`};
+export function addLine(state,{name,stations}={}){
+ const m={id:machineId('line'),name:cleanText(name,60)||nextName(state.machines,'SMT line'),kind:'SMT line',status:'idle',job:null,stations:cleanStations(stations)};
+ return {...state,machines:[...state.machines,m]};
+}
+export function addMachine(state,{name,kind}={}){
+ if(kind==='SMT line')return addLine(state,{name});
+ const k=MACHINE_KINDS.includes(kind)?kind:'Other';
+ const m={id:machineId('m'),name:cleanText(name,60)||nextName(state.machines,k==='Other'?'Machine':k),kind:k,status:'idle',job:null};
+ return {...state,machines:[...state.machines,m]};
+}
+// Rename, change a machine's kind (a line stays a line) or a line's stations.
+export function updateMachine(state,id,patch={}){
+ return {...state,machines:state.machines.map(m=>{if(m.id!==id)return m;const next={...m};
+  if('name' in patch)next.name=cleanText(patch.name,60)||m.name;
+  if('kind' in patch&&m.kind!=='SMT line'&&patch.kind!=='SMT line'&&MACHINE_KINDS.includes(patch.kind))next.kind=patch.kind;
+  if('stations' in patch&&m.kind==='SMT line')next.stations=cleanStations(patch.stations);
+  return next})};
+}
+export function removeMachine(state,id){return {...state,machines:state.machines.filter(m=>m.id!==id)}}
+export function moveMachine(state,id,dir){const i=state.machines.findIndex(m=>m.id===id),j=i+(dir<0?-1:1);if(i<0||j<0||j>=state.machines.length)return state;const ms=[...state.machines];[ms[i],ms[j]]=[ms[j],ms[i]];return {...state,machines:ms}}
+export function clearFloor(state){return {...state,machines:[],floorSet:true}}
 
 export const activeJobs=jobs=>jobs.filter(j=>!j.finished).sort((a,b)=>a.expected<b.expected?-1:1);
 export const completedJobs=jobs=>jobs.filter(j=>j.finished).sort((a,b)=>a.finished<b.finished?1:-1);

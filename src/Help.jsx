@@ -1,13 +1,13 @@
 import React from 'react';
-import {PlayCircle,Compass,ArrowRight,Boxes,Plug,Store,Globe,CircuitBoard,Calculator,Box,FileDown,Factory,BookMarked,Bookmark,Package,Bell,Settings2} from 'lucide-react';
+import {PlayCircle,Compass,ArrowRight,Boxes,Plug,Store,Globe,CircuitBoard,Calculator,Box,FileDown,Factory,BookMarked,Bookmark,Package,Bell,Settings2,Wallet,Search} from 'lucide-react';
 import {STAGES,STAGE_GROUPS} from './production.js';
 import {BOM_STEPS} from './bomDemo.js';
 
 // Help page: how the product fits together, how to use each page, where prices come from, what each
 // production stage means, and answers to common questions. The tour and the BOM demo start from here.
 const QUICK=[
- ['Upload the Gerber','BOM tool, step 1. The bare board is drawn and quoted, the board opens in Board studio and its parts fill step 2.',CircuitBoard],
- ['Upload the BOM','Step 2. An Excel or CSV file with MPN and Quantity columns. Press Get prices.',Calculator],
+ ['Upload the Gerber','BOM tool, step 1, Bare PCB (required). The bare board is drawn and quoted, it opens in Board studio, and its parts fill step 2 when the ZIP holds the BOM, .pos, .kicad_pcb or ibom.html.',CircuitBoard],
+ ['Check the BOM','Step 2, Components. Check the lines from the Gerber, or upload an Excel or CSV BOM. Press Get prices; Ask quote mails a distributor.',Calculator],
  ['Pick an enclosure','Step 3, optional. Off the shelf, or custom moulded with the mould on the same page.',Box],
  ['Quote','Step 4. Check totals and download the quotation PDF.',FileDown],
  ['Save or continue','Save list keeps everything for later. Continue to production books the job.',Bookmark],
@@ -19,18 +19,20 @@ const SOURCES=[
  ['Open market',Globe,'Google Shopping listings through SerpApi. Only listings that are exactly the part are shown: not a longer part number, not a kit, module or "compatible" item, one per seller. Prices are not restricted, but these offers are unverified and never chosen without you.']];
 const PAGES=[
  ['Overview','The whole flow on one line, from part master and stock to final product, plus stock value and alerts.',null],
- ['BOM tool','Bare PCB → Components → Enclosure → Quotation. Only Components is required; the rest are options.',Calculator],
+ ['BOM tool','Bare PCB → Components → Enclosure → Quotation. The bare PCB and the components are required; the enclosure is optional. Ask quote mails an authorised distributor for a quotation.',Calculator],
  ['Saved lists','Every list saved from the quotation step. Open it again, duplicate it for another quantity, or follow it into production.',Bookmark],
  ['Part master','Every part the company knows, sorted into 10 categories, with specs, alternates and look-ups.',BookMarked],
  ['Inventory','Own stock (quantities, value, minimums) and boards on their way from the line to dispatch.',Package],
  ['Board studio','Gerber, KiCad, pick-and-place or a PDF as a 3D board. Hover to name a part, run the SMT line.',CircuitBoard],
- ['Production','Jobs, machines and capacity. Complete stages, send boards to rework at a quality gate, open the BOM a job came from.',Factory],
+ ['Production','Jobs, machines and capacity. Set up the factory: Create line with the stations your line really has, Add machine for wave, test, coating or anything else, rename, reorder or remove. Complete stages, send boards to rework at a quality gate, open the BOM a job came from.',Factory],
+ ['Purchases','A tab of Inventory. Place order from the BOM tool\'s purchase list, Mark received and the parts go into inventory. Completed boards take their components out of stock. See what was spent, what came in from dispatched boards, and every stock move.',Wallet],
+ ['Search or jump','Ctrl+K (⌘K on a Mac) anywhere: type a page, an action, a part number, a saved list or a board and press Enter.',Search],
  ['Vendors','Every vendor kind. Describe what they do and register the products they have.',Store],
  ['Alerts','Low, out-of-stock and end-of-life parts with alternatives.',Bell],
  ['Integrations','Which supplier and AI keys are set on the server.',Settings2]];
 const FAQ=[
- ['Do I need a Gerber?','No. The bare PCB and the enclosure are options. Upload only the BOM if that is what you have.'],
- ['The Gerber gave no components. Why?','Many Gerber sets carry no part data. semi-cobot infers parts from the pads, drills and silkscreen; add the pick-and-place file to the ZIP, or upload the BOM in step 2.'],
+ ['Do I need a Gerber?','Every quote needs the bare PCB. Upload the Gerber ZIP, or set the board size by hand and enter the fab price. The enclosure is optional.'],
+ ['The Gerber gave no values or part numbers. Why?','KiCad and most CAD tools put only designators (R1, U1), pads and nets into Gerber files. The values and part numbers are in the project: add the .kicad_pcb, the placement file (.pos), a BOM or ibom.html to the ZIP, and every part gets them.'],
  ['What does "Not available" mean?','The supplier did not report that value. Nothing is guessed: a missing price leaves the line out of the totals until you enter or fetch one.'],
  ['Why are some Google Shopping listings hidden?','They were not the exact part (a longer part number, a kit, a module, a "compatible" item) or the same seller again. The part overview says how many and why.'],
  ['How does a list reach production?','Quotation step → Continue to production. The list is saved as ordered, a job is booked, and the job keeps its quote number and a link back to the BOM.'],

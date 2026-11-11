@@ -10,6 +10,9 @@ import {partPads,displayName,LIMITS} from './blueprint';
 import {buildLine} from './smtLine.js';
 import {createSmtRig} from './smtRig.js';
 import {PartSummary} from './PartSummary';
+import {parseGlb,normalizeBoard,fitPartModel,cachedModel} from './glb.js';
+import {getFile,loadModelIndex,modelFor,MODELS_CHANGED} from './modelStore.js';
+import {keyOf} from './partDetails.js';
 
 export const TYPE_COLORS={chip:0x242a2b,module:0x2b3436,transistor:0x2a2f30,diode:0x3b3432,led:0xd9e8e2,capacitor:0xb9a17b,resistor:0x34393d,inductor:0x55595b,connector:0xc7ccca,crystal:0xb5bbb7,switch:0x8f9699,fuse:0xd2cfb4,other:0x5d6764};
 const hex=n=>'#'+n.toString(16).padStart(6,'0');
@@ -19,8 +22,17 @@ const viewMemory=new Map(),gerberLayerCache=new Map();
 const CAMERAS={overview:[10,13,12],top:[0,19,.6],side:[15,4.5,7],assembly:[8,15,16]};
 const THICK=.18;
 // Builds every mesh of a board into `group`. Returns the pickable component meshes.
-function buildBoard(group,board,parts,s){
+function buildBoard(group,board,parts,s,models={}){
  const clickable=[];const mat=(color,metalness=.1,roughness=.6)=>new THREE.MeshStandardMaterial({color,metalness,roughness});
+ // A board imported as a 3D model (.glb): the model itself is added once it has loaded (see the effect);
+ // here each component it names gets an invisible box at its place, so hover and click still work.
+ if(board.glb){
+  for(const p of parts){const b=p.glbBox;if(!b)continue;const geo=new THREE.BoxGeometry(Math.max(.03,b.w*s),Math.max(.03,b.h*s),Math.max(.03,b.d*s));
+   const m=new THREE.Mesh(geo,new THREE.MeshBasicMaterial({color:0x89d9aa,transparent:true,opacity:0,depthWrite:false}));m.position.set(b.cx*s,b.cy*s,b.cz*s);
+   m.userData={part:p,kind:'box',h:b.h*s,lift:0,hitOnly:true,layer:'parts-'+(p.side==='bottom'?'bottom':'top')};group.add(m);clickable.push(m);
+   const outline=new THREE.LineSegments(new THREE.EdgesGeometry(geo),new THREE.LineBasicMaterial({color:0x89d9aa}));outline.visible=false;m.add(outline);m.userData.outline=outline}
+  return clickable;
+ }
  const W=board.width*s,H=board.height*s;
  const slabGeometry=depth=>{
   if(board.outline&&board.outline.length>2){
@@ -81,6 +93,8 @@ function buildBoard(group,board,parts,s){
   const sign=p.side==='bottom'?-1:1;const lift=p.pads||board.image?.02:.06;
   mesh.position.set(p.x*s,sign*(THICK/2+lift+h/2),p.y*s);mesh.rotation.y=p.rot*Math.PI/180;
   mesh.userData={part:p,kind:body.kind,h,lift,layer:'parts-'+(p.side==='bottom'?'bottom':'top')};
+  // A part number with a component model attached: the model replaces this body once it has loaded.
+  const model=modelFor(models,p.mpn);if(model){mesh.userData.modelKey='part:'+keyOf(p.mpn);mesh.userData.modelMeta=model}
   // Suggested (not yet confirmed) parts: translucent blue, so they read as a plan rather than a placed part.
   if(p.suggested)mesh.traverse(o=>{if(!o.material)return;o.material=(Array.isArray(o.material)?o.material:[o.material]).map(x=>{const c=x.clone();c.transparent=true;c.opacity=.6;c.color?.lerp(new THREE.Color(0x6fa8ff),.6);return c});if(o.material.length===1)o.material=o.material[0]});group.add(mesh);clickable.push(mesh);
   const outline=new THREE.LineSegments(new THREE.EdgesGeometry(mesh.geometry),new THREE.LineBasicMaterial({color:0x89d9aa}));outline.visible=false;outline.scale.set(1.12,1.12,1.12);mesh.add(outline);mesh.userData.outline=outline;
@@ -102,7 +116,7 @@ function buildBoard(group,board,parts,s){
  // Leads, end caps, through-hole pins and solder: planned per part in millimetres, merged per material.
  const det={};const push=(k,side,g)=>{(det[k+'|'+side]||=[]).push(g)};let pieces=0;
  for(const p of parts){
-  if(pieces>LIMITS.pads*2)break;
+  if(pieces>LIMITS.pads*2)break;if(modelFor(models,p.mpn))continue;
   const d=partDetail(p),a=p.rot*Math.PI/180,sign=p.side==='bottom'?-1:1,lift=(p.pads||board.image?.02:.06),h=Math.max(.04,p.h*s);
   const surf=sign*(THICK/2),bodyBottom=sign*(THICK/2+lift);
   const place=(g,lx,ly,yy)=>{g.translate(lx*s,yy,ly*s);g.rotateY(a);g.translate(p.x*s,0,p.y*s);return g};
@@ -133,9 +147,13 @@ function buildBoard(group,board,parts,s){
 export default function Board({board,parts,onSelect,onHover,onPick,onFocus,selected,compact=false,mode='3D',setMode}){
  const host=useRef(),wrap=useRef(),tip=useRef(),sceneRef=useRef(),cb=useRef({});cb.current={onSelect,onHover,onPick,onFocus};
  const partsRef=useRef(parts);partsRef.current=parts;
+ // Component models attached to part numbers (modelStore.js); attaching or turning one rebuilds the scene.
+ const [models,setModels]=useState(()=>loadModelIndex());
+ useEffect(()=>{const f=()=>setModels(loadModelIndex());window.addEventListener(MODELS_CHANGED,f);return()=>window.removeEventListener(MODELS_CHANGED,f)},[]);
+ const [modelStatus,setModelStatus]=useState('');
  // The 3D scene is rebuilt only when geometry changes. Stock, knowledge and price updates arrive as new
  // part objects with the same geometry and are pushed into the existing meshes instead.
- const geomKey=useMemo(()=>board.id+'|'+parts.map(p=>[p.ref,p.x,p.y,p.rot,p.w,p.d,p.h,p.side,p.type,p.package,p.mpn,p.value,p.leads,p.suggested?1:0,(p.pads||[]).length].join(',')).join(';'),[board.id,parts]);
+ const geomKey=useMemo(()=>board.id+'|'+(board.glb?.key||'')+'|'+parts.map(p=>{const m=modelFor(models,p.mpn);return [p.ref,p.x,p.y,p.rot,p.w,p.d,p.h,p.side,p.type,p.package,p.mpn,p.value,p.leads,p.suggested?1:0,(p.pads||[]).length,m?m.addedAt+'/'+m.rx+'/'+m.ry:''].join(',')}).join(';'),[board.id,board.glb,parts,models]);
  const [full,setFull]=useState(false);
  useEffect(()=>{const fn=()=>setFull((document.fullscreenElement||document.webkitFullscreenElement)===wrap.current);document.addEventListener('fullscreenchange',fn);document.addEventListener('webkitfullscreenchange',fn);return()=>{document.removeEventListener('fullscreenchange',fn);document.removeEventListener('webkitfullscreenchange',fn)}},[]);
  const toggleFull=()=>{const el=wrap.current;if(!el)return;const cur=document.fullscreenElement||document.webkitFullscreenElement;if(cur){(document.exitFullscreen||document.webkitExitFullscreen)?.call(document)}else{(el.requestFullscreen||el.webkitRequestFullscreen)?.call(el)}};
@@ -160,7 +178,22 @@ export default function Board({board,parts,onSelect,onHover,onPick,onFocus,selec
   const rim=new THREE.DirectionalLight(0xcfe8dd,2);rim.position.set(-8,6,-5);scene.add(rim);
   const under=new THREE.DirectionalLight(0xdfe9e3,1.2);under.position.set(2,-9,-4);scene.add(under);
   const group=new THREE.Group();scene.add(group);
-  const clickable=buildBoard(group,board,partsRef.current,scale);
+  const clickable=buildBoard(group,board,partsRef.current,scale,loadModelIndex());
+  // GLB models load after the scene is up: the whole-board model, and each attached component model
+  // (read once per part number, then copied). Until one arrives the generated board or body stays.
+  let disposed=false;const shade=o=>o.traverse(x=>{if(x.isMesh){x.castShadow=true;x.receiveShadow=true}});
+  const readModel=key=>cachedModel(key,async()=>{const bytes=await getFile(key);if(!bytes)throw new Error('The 3D model is no longer stored in this browser. Import the .glb again.');return parseGlb(bytes)});
+  if(board.glb){setModelStatus('Loading the 3D model…');
+   readModel(board.glb.key).then(tpl=>{if(disposed)return;const n=normalizeBoard(tpl.clone(true));const holder=new THREE.Group();holder.add(n.object);holder.scale.setScalar(scale);holder.userData.layer='parts-top';shade(holder);group.add(holder);setModelStatus('')})
+    .catch(e=>{if(!disposed)setModelStatus(e.message)})}
+  else setModelStatus('');
+  for(const m of clickable){const key=m.userData.modelKey;if(!key)continue;
+   readModel(key).then(tpl=>{if(disposed)return;const p=m.userData.part,h=m.userData.h,fit=fitPartModel(tpl,p,scale,m.userData.modelMeta);const o=fit.object;
+    if(p.side==='bottom'){o.rotation.x=Math.PI;o.position.y=h/2}else o.position.y=-h/2;
+    // The generated body stays as the invisible hit target, so hover, click, gripper and assembly still work.
+    for(const mt of [].concat(m.material)){mt.transparent=true;mt.opacity=0;mt.depthWrite=false}m.castShadow=false;
+    for(const c of m.children)if(c!==m.userData.outline)c.visible=false;
+    m.add(o);m.userData.model=o}).catch(()=>{})}
   const memory=viewMemory.get(board.id+'|'+mode);if(memory){camera.position.copy(memory.pos)}
   // Cobot gripper (studio only). Inspection: pick a clicked part, hold it up, put it back on its seat.
   // Assembly runs the SMT machine process (smtRig.js): tape feeders along the board edges, a 4-nozzle
@@ -223,7 +256,10 @@ export default function Board({board,parts,onSelect,onHover,onPick,onFocus,selec
   const ground=new THREE.Mesh(new THREE.PlaneGeometry(200,200),new THREE.ShadowMaterial({opacity:.09}));ground.rotation.x=-Math.PI/2;ground.position.y=-.3;ground.receiveShadow=true;scene.add(ground);
   const ray=new THREE.Raycaster(),pointer=new THREE.Vector2();let start=null,dragging=false,hovered=null,raf=0,lastEvent=null,desired=null;
   const cast=e=>{const b=renderer.domElement.getBoundingClientRect();pointer.set((e.clientX-b.left)/b.width*2-1,-((e.clientY-b.top)/b.height)*2+1);ray.setFromCamera(pointer,camera);const hit=ray.intersectObjects(clickable,false).find(h=>h.object.visible);return hit?hit.object:null};
-  const highlight=(mesh,on)=>{if(!mesh)return;for(const m of Array.isArray(mesh.material)?mesh.material:[mesh.material])m.emissive?.setHex(on?0x2f6a46:0x000000)};
+  const highlight=(mesh,on)=>{if(!mesh)return;
+   if(mesh.userData.hitOnly){for(const m of [].concat(mesh.material))m.opacity=on?.28:0;return}
+   for(const m of Array.isArray(mesh.material)?mesh.material:[mesh.material])m.emissive?.setHex(on?0x2f6a46:0x000000);
+   mesh.userData.model?.traverse(o=>{if(o.isMesh)for(const m of [].concat(o.material))m.emissive?.setHex(on?0x2f6a46:0x000000)})};
   const clearHover=()=>{if(hovered){highlight(hovered,false);hovered=null;setHovered(null)}renderer.domElement.style.cursor='grab'};
   const move=e=>{if(dragging)return;lastEvent=e;if(raf)return;raf=requestAnimationFrame(()=>{raf=0;const m=cast(lastEvent);if(m!==hovered){highlight(hovered,false);hovered=m;highlight(m,true);renderer.domElement.style.cursor=m?'pointer':'grab';setHovered(m?m.userData.part:null)}if(m)moveTip(lastEvent.clientX,lastEvent.clientY)})};
   let travelled=0;const track=e=>{if(dragging&&start)travelled=Math.max(travelled,Math.hypot(e.clientX-start[0],e.clientY-start[1]))};
@@ -278,7 +314,7 @@ export default function Board({board,parts,onSelect,onHover,onPick,onFocus,selec
   setLayerList(present());
   sceneRef.current={fresh:true,camera,controls,clickable,group,grip,pick,putBack,releaseNow,startAssembly,stopAssembly,meshByRef,setExplode,setHidden,addGerberLayers,goTo:pos=>{desired=new THREE.Vector3(...pos);controls.target.set(0,0,0)}};
   let frame;const animate=now=>{frame=requestAnimationFrame(animate);stepGripper(now??performance.now());if(Math.abs(ex.k-ex.target)>.002){ex.k+=(ex.target-ex.k)*.12;if(Math.abs(ex.k-ex.target)<.003)ex.k=ex.target;applyExplode()}if(desired){camera.position.lerp(desired,.14);if(camera.position.distanceTo(desired)<.02)desired=null}controls.update();renderer.render(scene,camera)};animate();
-  return()=>{viewMemory.set(board.id+'|'+mode,{pos:camera.position.clone()});cancelAnimationFrame(frame);if(raf)cancelAnimationFrame(raf);ro.disconnect();controls.dispose();dom.removeEventListener('pointermove',track);dom.removeEventListener('pointerdown',down);dom.removeEventListener('pointerup',up);dom.removeEventListener('pointermove',move);dom.removeEventListener('pointerleave',clearHover);dom.removeEventListener('pointercancel',clearHover);scene.traverse(o=>{o.geometry?.dispose();if(o.isSprite)o.material.map?.dispose();if(o.material){const mats=Array.isArray(o.material)?o.material:[o.material];mats.forEach(m=>{m.map?.dispose();m.dispose()})}});renderer.dispose();dom.remove();sceneRef.current=null;setAssembling(false)};
+  return()=>{disposed=true;viewMemory.set(board.id+'|'+mode,{pos:camera.position.clone()});cancelAnimationFrame(frame);if(raf)cancelAnimationFrame(raf);ro.disconnect();controls.dispose();dom.removeEventListener('pointermove',track);dom.removeEventListener('pointerdown',down);dom.removeEventListener('pointerup',up);dom.removeEventListener('pointermove',move);dom.removeEventListener('pointerleave',clearHover);dom.removeEventListener('pointercancel',clearHover);scene.traverse(o=>{o.geometry?.dispose();if(o.isSprite)o.material.map?.dispose();if(o.material){const mats=Array.isArray(o.material)?o.material:[o.material];mats.forEach(m=>{m.map?.dispose();m.dispose()})}});renderer.dispose();dom.remove();sceneRef.current=null;setAssembling(false)};
  },[mode,compact,board,geomKey,scale]);
  // New part data with unchanged geometry (stock, knowledge, prices): update the meshes in place.
  useEffect(()=>{const sc=sceneRef.current;if(!sc?.clickable)return;const byRef=new Map(parts.map(p=>[p.ref,p]));for(const m of sc.clickable){const p=byRef.get(m.userData.part?.ref);if(p)m.userData.part=p}},[parts]);
@@ -348,11 +384,11 @@ export default function Board({board,parts,onSelect,onHover,onPick,onFocus,selec
    {board.decor&&<text x="0" y="-30" textAnchor="middle" fontSize="2.2" fill="#d5e3d9">SEMI-COBOT · CTRL-01</text>}
   </svg>:<div ref={host} className="canvas-host" aria-label="Interactive 3D PCB. Drag to rotate; move over a component to identify it; click to inspect."/>}
   <div ref={tip} className={'board-tip '+(hover?'visible':'')} role="status" aria-live="polite">{hover&&<><PartSummary part={hover} tooltip/></>}</div>
-  <div className="view-badge"><span className="live-dot"/> {mode==='2D'?'TOP LAYER':exploded?'LAYERS SEPARATED':flipped?'BOTTOM VIEW':view.toUpperCase()}</div>
-  {!compact&&mode!=='2D'&&!failed&&<div className="board-tools"><button title={full?'Exit full screen (Esc)':'Full screen'} aria-label={full?'Exit full screen':'Full screen'} aria-pressed={full} onClick={toggleFull}>{full?<Minimize2 size={16}/>:<Maximize2 size={16}/>}</button><button title="Zoom in" aria-label="Zoom in" onClick={()=>sceneRef.current?.camera.position.multiplyScalar(.85)}><ZoomIn size={17}/></button><button title="Zoom out" aria-label="Zoom out" onClick={()=>sceneRef.current?.camera.position.multiplyScalar(1.15)}><ZoomOut size={17}/></button><button title="Reset view" aria-label="Reset view" onClick={reset}><RotateCcw size={17}/></button><button title={gripOn?'Turn the gripper off':'Pick parts with the cobot gripper'} aria-label="Gripper" aria-pressed={gripOn} className={gripOn?'active':''} onClick={()=>setGripOn(!gripOn)}><Hand size={17}/></button><button title={exploded?'Put the board back together':'Separate the layers: components, silkscreen, mask, copper circuit and core'} aria-label={exploded?'Join the layers':'Separate the layers'} aria-pressed={exploded} className={exploded?'active':''} onClick={()=>setExploded(v=>!v)}><Layers3 size={17}/></button>{gripOn&&!flipped&&!exploded&&<>{assembling?<button title="Stop assembly" aria-label="Stop assembly" onClick={()=>sceneRef.current?.stopAssembly()}><Square size={15}/></button>:<button title="Assemble the board: place every top-side part from the tape feeders" aria-label="Assemble board" onClick={()=>sceneRef.current?.startAssembly(programRows(parts,board).map(r=>r.ref),'the placement data')}><Play size={16}/></button>}<button title="Export the gripper program (CSV)" aria-label="Export gripper program" onClick={exportProgram}><Download size={16}/></button><button title="Import a gripper program or pick-and-place file and run it" aria-label="Import gripper program" disabled={assembling} onClick={()=>programInput.current?.click()}><Upload size={16}/></button><input ref={programInput} type="file" accept=".csv,.txt,.tsv,.pos" hidden aria-label="Gripper program file" onChange={e=>{importProgram(e.target.files?.[0]);e.target.value=''}}/></>}{<button title={flipped?'Show top side':'Show bottom side'} aria-label={flipped?'Show top side':'Show bottom side'} aria-pressed={flipped} className={flipped?'active':''} onClick={()=>setFlipped(!flipped)}><FlipVertical2 size={17}/></button>}</div>}
+  {modelStatus&&mode!=='2D'&&!failed&&<div className="model-status" role="status">{modelStatus}</div>}<div className="view-badge"><span className="live-dot"/> {mode==='2D'?'TOP LAYER':exploded?'LAYERS SEPARATED':flipped?'BOTTOM VIEW':view.toUpperCase()}</div>
+  {!compact&&mode!=='2D'&&!failed&&<div className="board-tools"><button title={full?'Exit full screen (Esc)':'Full screen'} aria-label={full?'Exit full screen':'Full screen'} aria-pressed={full} onClick={toggleFull}>{full?<Minimize2 size={16}/>:<Maximize2 size={16}/>}</button><button title="Zoom in" aria-label="Zoom in" onClick={()=>sceneRef.current?.camera.position.multiplyScalar(.85)}><ZoomIn size={17}/></button><button title="Zoom out" aria-label="Zoom out" onClick={()=>sceneRef.current?.camera.position.multiplyScalar(1.15)}><ZoomOut size={17}/></button><button title="Reset view" aria-label="Reset view" onClick={reset}><RotateCcw size={17}/></button>{!board.glb&&<><button title={gripOn?'Turn the gripper off':'Pick parts with the cobot gripper'} aria-label="Gripper" aria-pressed={gripOn} className={gripOn?'active':''} onClick={()=>setGripOn(!gripOn)}><Hand size={17}/></button><button title={exploded?'Put the board back together':'Separate the layers: components, silkscreen, mask, copper circuit and core'} aria-label={exploded?'Join the layers':'Separate the layers'} aria-pressed={exploded} className={exploded?'active':''} onClick={()=>setExploded(v=>!v)}><Layers3 size={17}/></button></>}{gripOn&&!flipped&&!exploded&&<>{assembling?<button title="Stop assembly" aria-label="Stop assembly" onClick={()=>sceneRef.current?.stopAssembly()}><Square size={15}/></button>:<button title="Assemble the board: place every top-side part from the tape feeders" aria-label="Assemble board" onClick={()=>sceneRef.current?.startAssembly(programRows(parts,board).map(r=>r.ref),'the placement data')}><Play size={16}/></button>}<button title="Export the gripper program (CSV)" aria-label="Export gripper program" onClick={exportProgram}><Download size={16}/></button><button title="Import a gripper program or pick-and-place file and run it" aria-label="Import gripper program" disabled={assembling} onClick={()=>programInput.current?.click()}><Upload size={16}/></button><input ref={programInput} type="file" accept=".csv,.txt,.tsv,.pos" hidden aria-label="Gripper program file" onChange={e=>{importProgram(e.target.files?.[0]);e.target.value=''}}/></>}{<button title={flipped?'Show top side':'Show bottom side'} aria-label={flipped?'Show top side':'Show bottom side'} aria-pressed={flipped} className={flipped?'active':''} onClick={()=>setFlipped(!flipped)}><FlipVertical2 size={17}/></button>}</div>}
   {exploded&&mode!=='2D'&&!compact&&<div className="layer-legend" role="group" aria-label="Board layers"><strong>Board layers</strong>{layerStatus&&<small role="status">{layerStatus}</small>}
    {layerList.map(key=>{const off=hiddenLayers.includes(key);return <button key={key} type="button" aria-pressed={!off} onClick={()=>setHiddenLayers(h=>off?h.filter(x=>x!==key):[...h,key])}>{off?<EyeOff size={13}/>:<Eye size={13}/>}{LAYER_NAMES[key]||key}</button>})}
    <span className="layer-quick"><button type="button" onClick={()=>setHiddenLayers(layerList.filter(k=>!/^copper|^core/.test(k)))}>Circuit only</button><button type="button" onClick={()=>setHiddenLayers(layerList.filter(k=>!/^parts/.test(k)&&k!=='core'))}>Components only</button><button type="button" onClick={()=>setHiddenLayers([])}>All layers</button></span></div>}
-  <div className="board-bottom"><span className={gripOn&&gripStatus&&mode!=='2D'?'grip-status':undefined} role={gripOn&&mode!=='2D'?'status':undefined}>{gripOn&&gripStatus&&mode!=='2D'&&!compact?gripStatus:compact?`${parts.length} components · ${board.layers} layers`:mode==='2D'?'Hover to identify · Click to inspect':'Drag to orbit · Scroll to zoom · Click to inspect'}</span>{!compact&&mode!=='2D'&&!failed&&<div className="segmented camera-row" aria-label="Camera view">{['overview','top','side'].map(v=><button key={v} className={view===v&&!flipped?'active':''} aria-pressed={view===v} onClick={()=>goTo(v)}>{v[0].toUpperCase()+v.slice(1)}</button>)}</div>}{setMode&&<div className="segmented"><button className={mode==='2D'?'active':''} onClick={()=>setMode('2D')}><Layers size={13}/>2D</button><button className={mode==='3D'?'active':''} onClick={()=>setMode('3D')}><Box size={13}/>3D</button></div>}</div>
+  <div className="board-bottom"><span className={gripOn&&gripStatus&&mode!=='2D'?'grip-status':undefined} role={gripOn&&mode!=='2D'?'status':undefined}>{gripOn&&gripStatus&&mode!=='2D'&&!compact?gripStatus:compact?`${parts.length} components${board.layers?` · ${board.layers} layers`:''}`:mode==='2D'?'Hover to identify · Click to inspect':'Drag to orbit · Scroll to zoom · Click to inspect'}</span>{!compact&&mode!=='2D'&&!failed&&<div className="segmented camera-row" aria-label="Camera view">{['overview','top','side'].map(v=><button key={v} className={view===v&&!flipped?'active':''} aria-pressed={view===v} onClick={()=>goTo(v)}>{v[0].toUpperCase()+v.slice(1)}</button>)}</div>}{setMode&&<div className="segmented"><button className={mode==='2D'?'active':''} onClick={()=>setMode('2D')}><Layers size={13}/>2D</button><button className={mode==='3D'?'active':''} onClick={()=>setMode('3D')}><Box size={13}/>3D</button></div>}</div>
  </div>
 }

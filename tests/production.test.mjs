@@ -129,7 +129,7 @@ test('the floor is in process order and older saved floors are rebuilt that way'
  assert.deepEqual(LINE_STATIONS,['Loader','Printer','SPI','Pick & place','Reflow','AOI','X-ray']);assert.ok(!s.machines.some(m=>/reflow|aoi/i.test(m.kind)),'reflow and AOI are part of each line');
  const old={version:1,jobs:s.jobs,machines:[{id:'smt-1',name:'SMT line 1',kind:'SMT line',status:'idle',job:null},{id:'reflow-1',name:'Reflow oven A',kind:'Reflow oven',status:'running',job:'job-4'},{id:'aoi-1',name:'AOI station',kind:'AOI',status:'running',job:null},{id:'wave-1',name:'Wave solder',kind:'Wave solder',status:'maintenance',job:null}]};
  const m=migrateProduction(old,today);assert.equal(m.version,2);assert.ok(!m.machines.some(x=>x.id==='reflow-1'||x.id==='aoi-1'));assert.equal(m.machines.find(x=>x.id==='smt-1').status,'idle','kept');assert.equal(m.machines.find(x=>x.id==='wave-1').status,'maintenance','kept');assert.equal(m.jobs,old.jobs);
- assert.equal(migrateProduction(s),s,'current floors are left alone');assert.equal(migrateProduction(null),null);assert.equal(AREAS.length,3);
+ assert.equal(migrateProduction(s),s,'current floors are left alone');assert.equal(migrateProduction(null),null);assert.equal(AREAS.length,4);
 });
 
 test('each machine on the floor is drawn with its own 3D model, and every model builds', () => {
@@ -183,4 +183,23 @@ test('the whole chain runs material, factory line, assembly, testing and final p
  const empty={machines:seedProduction(today).machines.map(m=>({...m,status:'idle',job:null})),jobs:[],log:[]};
  const p=jobFromOrder(empty,{customer:'Orion',board:'GW-3',qty:50,components:40,due:addDays(today,20)},today);
  assert.equal(p.estimated,false);assert.equal(p.job.expected,addDays(today,20));assert.ok(p.state.machines.some(m=>m.job===p.job.id),'started on a free line');
+});
+
+test('factory setup: create lines with their own stations, add, rename, reorder and remove machines',async()=>{
+ const p=await import('../src/production.js');
+ let s=p.emptyProduction('2026-11-11');const before=s.machines.length;
+ s=p.clearFloor(s);assert.equal(s.machines.length,0);assert.equal(s.floorSet,true);
+ s=p.addLine(s,{name:'',stations:['Loader','Printer','Pick & place','Pick & place 2','Reflow','  ']});
+ assert.equal(s.machines[0].name,'SMT line 1');assert.deepEqual(s.machines[0].stations,['Loader','Printer','Pick & place','Pick & place 2','Reflow']);
+ s=p.addLine(s,{name:'Fast line'});assert.deepEqual(p.stationsOf(s.machines[1]),p.LINE_STATIONS,'a new line gets the usual stations');
+ s=p.addMachine(s,{kind:'Conformal coating'});s=p.addMachine(s,{name:'Wave 1',kind:'Wave solder'});s=p.addMachine(s,{name:'Odd',kind:'Laser'});
+ assert.deepEqual(s.machines.map(m=>m.kind),['SMT line','SMT line','Conformal coating','Wave solder','Other']);
+ assert.equal(p.areaOf('Conformal coating'),'Other');assert.equal(p.areaOf('Wave solder'),'THT');assert.equal(p.modelOf(s.machines[2]),null);
+ const sum=p.floorSummary(s.machines,[]);assert.deepEqual([sum.total,sum.lines,sum.idleLines],[5,2,2]);
+ const id=s.machines[3].id;s=p.updateMachine(s,id,{name:'Wave A',kind:'SMT line'});assert.equal(s.machines[3].name,'Wave A');assert.equal(s.machines[3].kind,'Wave solder','a machine cannot become a line');
+ s=p.updateMachine(s,s.machines[0].id,{stations:[]});assert.deepEqual(s.machines[0].stations,p.LINE_STATIONS,'a line keeps at least its stations');
+ s=p.moveMachine(s,id,-1);assert.equal(s.machines[2].id,id);assert.equal(p.moveMachine(s,s.machines[0].id,-1),s);
+ s=p.removeMachine(s,id);assert.equal(s.machines.length,4);
+ const est=p.estimateJob(s.machines,p.seedProduction('2026-11-11').jobs,{qty:500,components:90},'2026-11-11');assert.ok(est.ok);assert.equal(est.window.lines,2,'estimates use the lines the user created');
+ assert.ok(before>0);
 });
